@@ -1,0 +1,34 @@
+{
+  "name": "pi-mode-switch",
+  "version": "0.1.0",
+  "description": "YAML-defined model, tool, and skill modes for pi",
+  "type": "module",
+  "keywords": ["pi-package", "pi-extension", "agent-modes"],
+  "license": "MIT",
+  "files": ["src", "README.md", "modes.example.yaml"],
+  "scripts": {
+    "test": "tsx --test test/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "^0.84.2",
+    "@earendil-works/pi-ai": "^0.84.2",
+    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typebox": "^1.3.7",
+    "typescript": "^5.9.0"
+  }
+}
