@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { ConfigValidationError, loadModeConfig, mergeModeConfigs, parseModeConfig } from "../src/config.ts";
 
 const VALID = `
@@ -142,6 +144,13 @@ test("loadModeConfig ignores an invalid project and retains global config", asyn
   });
   assert.equal(loaded.config?.defaultMode, "plan");
   assert.ok(loaded.diagnostics.some((diagnostic) => diagnostic.message.includes("defaultMode \"absent\" does not name a configured mode")));
+});
+
+test("modes.example.yaml stays valid", async () => {
+  const path = fileURLToPath(new URL("../modes.example.yaml", import.meta.url));
+  const parsed = parseModeConfig(await readFile(path, "utf8"), path);
+  assert.equal(parsed.defaultMode, "plan");
+  assert.deepEqual(Object.keys(parsed.modes), ["plan", "code"]);
 });
 
 test("loadModeConfig reports both paths when neither file exists", async () => {
