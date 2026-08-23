@@ -52,6 +52,52 @@ for (const [name, source, message] of invalidCases) {
   });
 }
 
+test("parseModeConfig accepts combined allow and deny lists", () => {
+  const parsed = parseModeConfig(
+    `
+version: 1
+defaultMode: code
+modes:
+  code:
+    model: openai/gpt
+    tools: [read, write]
+    excludeTools: [write]
+    skills: [test-driven-development]
+    excludeSkills: [officecli]
+`,
+    "/config/modes.yaml",
+  );
+
+  assert.deepEqual(parsed.modes.code.tools, ["read", "write"]);
+  assert.deepEqual(parsed.modes.code.excludeTools, ["write"]);
+  assert.deepEqual(parsed.modes.code.skills, ["test-driven-development"]);
+  assert.deepEqual(parsed.modes.code.excludeSkills, ["officecli"]);
+});
+
+test("parseModeConfig accepts deny-only resource lists", () => {
+  const parsed = parseModeConfig(
+    `
+version: 1
+modes:
+  code:
+    model: openai/gpt
+    excludeTools: [write]
+    excludeSkills: [officecli]
+`,
+    "/config/modes.yaml",
+  );
+
+  assert.equal(parsed.modes.code.tools, undefined);
+  assert.equal(parsed.modes.code.skills, undefined);
+});
+
+test("parseModeConfig rejects a mode without allow or deny lists", () => {
+  assert.throws(
+    () => parseModeConfig("version: 1\nmodes:\n  code:\n    model: openai/gpt\n", "/config/modes.yaml"),
+    (error: unknown) => error instanceof ConfigValidationError && error.message.includes("tools or excludeTools"),
+  );
+});
+
 const GLOBAL = `
 version: 1
 defaultMode: plan

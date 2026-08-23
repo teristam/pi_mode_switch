@@ -53,3 +53,31 @@ test("SkillContextBuilder includes selected full contents and metadata", async (
   assert.equal(warnings.filter((message) => message.includes("missing")).length, 1);
   assert.equal(warnings.filter((message) => message.includes("broken")).length, 1);
 });
+
+test("SkillContextBuilder auto-loads all discovered skills except denied skills", async () => {
+  const warnings: string[] = [];
+  const builder = new SkillContextBuilder(async (path) => `# ${path}`);
+  builder.setCatalogue([
+    skill("alpha", "/skills/alpha/SKILL.md"),
+    skill("beta", "/skills/beta/SKILL.md"),
+    skill("banned", "/skills/banned/SKILL.md"),
+  ]);
+
+  const content = await builder.build(
+    "code",
+    {
+      model: "openai/gpt",
+      provider: "openai",
+      modelId: "gpt",
+      skills: ["alpha"],
+      excludeSkills: ["banned"],
+      tools: [],
+    },
+    (message) => warnings.push(message),
+  );
+
+  assert.match(content, /BEGIN AUTO-LOADED SKILL alpha/);
+  assert.match(content, /BEGIN AUTO-LOADED SKILL beta/);
+  assert.doesNotMatch(content, /BEGIN AUTO-LOADED SKILL banned/);
+  assert.deepEqual(warnings, []);
+});

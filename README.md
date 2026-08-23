@@ -28,7 +28,7 @@ Copy `modes.example.yaml` to either location:
 
 Project configuration is read only after pi trusts the project. Project modes replace global modes with the same name; other global modes remain. A project `defaultMode` overrides the global value.
 
-Every mode requires `model`, `tools`, and `skills`. Use `provider/model-id`; the provider is the text before the first slash. `thinkingLevel` and `instructions` are optional.
+Every mode requires `model` and either `tools` or `excludeTools`, plus either `skills` or `excludeSkills`. Use `provider/model-id`; the provider is the text before the first slash. `thinkingLevel` and `instructions` are optional. Allow and deny fields may coexist; deny fields take precedence and automatically include newly discovered resources unless banned.
 
 ```yaml
 version: 1
@@ -43,14 +43,14 @@ modes:
       Plan only. Do not modify files.
 ```
 
-The configured model must already exist in pi and have working credentials. Tool and skill names must match resources discovered by pi. `mode_switch` is added automatically and cannot be removed by a mode profile.
+The configured model must already exist in pi and have working credentials. Tool and skill names must match resources discovered by pi. `mode_switch` is added automatically and cannot be removed by a mode profile. In deny-list mode, all discovered resources are enabled except explicitly banned names.
 
 After editing YAML, run `/reload`.
 
 ## Switch modes
 
 - `/mode` opens the TUI mode editor. Choose the global or trusted project `modes.yaml`, then edit an existing mode or create a new one.
-- The editor supports model, thinking level, tools, skills, and instructions. Saving validates the selected file and reloads the extension automatically.
+- The editor supports model, thinking level, instructions, and separate `Allowed tools`, `Banned tools`, `Allowed skills`, and `Banned skills` entries. Saving validates the selected file and reloads the extension automatically.
 - `/mode code` switches directly.
 - The agent can call `mode_switch({ mode: "code" })`.
 

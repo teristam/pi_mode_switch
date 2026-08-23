@@ -135,7 +135,13 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
       const profiles = names
         .map((name) => {
           const mode = loaded!.config!.modes[name];
-          return `${name} (${mode.model}; tools: ${mode.tools.join(", ") || "none"}; skills: ${mode.skills.join(", ") || "none"})`;
+          const tools = mode.excludeTools !== undefined
+            ? `all except ${mode.excludeTools.join(", ") || "none banned"}`
+            : mode.tools?.join(", ") || "none";
+          const skills = mode.excludeSkills !== undefined
+            ? `all except ${mode.excludeSkills.join(", ") || "none banned"}`
+            : mode.skills?.join(", ") || "none";
+          return `${name} (${mode.model}; tools: ${tools}; skills: ${skills})`;
         })
         .join("; ");
 
@@ -157,7 +163,7 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
             content: [
               {
                 type: "text",
-                text: `Switched to mode "${applied.name}" (${applied.definition.model}); thinking: ${applied.effectiveThinkingLevel}; tools: ${applied.activeTools.join(", ")}; skills: ${applied.definition.skills.join(", ") || "none"}.`,
+                text: `Switched to mode "${applied.name}" (${applied.definition.model}); thinking: ${applied.effectiveThinkingLevel}; tools: ${applied.activeTools.join(", ")}; skills: ${applied.definition.excludeSkills !== undefined ? `all except ${applied.definition.excludeSkills.join(", ") || "none banned"}` : applied.definition.skills?.join(", ") || "none"}.`,
               },
             ],
             details: {

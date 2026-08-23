@@ -37,15 +37,22 @@ export class SkillContextBuilder {
   }
 
   async build(modeName: string, mode: ModeDefinition, warn: SkillWarning): Promise<string> {
+    const selectedSkills = mode.excludeSkills !== undefined
+      ? [...this.catalogue.keys()].filter((name) => !mode.excludeSkills!.includes(name))
+      : [...(mode.skills ?? [])];
     const lines = [
       `[ACTIVE MODE: ${modeName}]`,
       `Configured model: ${mode.model}`,
-      `Active tools: ${unique([...mode.tools, MODE_SWITCH_TOOL]).join(", ")}`,
-      `Auto-loaded skills: ${unique(mode.skills).join(", ") || "(none)"}`,
+      mode.excludeTools !== undefined
+        ? `Active tools: all discovered except ${unique(mode.excludeTools).join(", ") || "none banned"}`
+        : `Active tools: ${unique([...(mode.tools ?? []), MODE_SWITCH_TOOL]).join(", ")}`,
+      mode.excludeSkills !== undefined
+        ? `Auto-loaded skills: all discovered except ${unique(mode.excludeSkills).join(", ") || "(none banned)"}`
+        : `Auto-loaded skills: ${unique(selectedSkills).join(", ") || "(none)"}`,
     ];
     if (mode.instructions) lines.push("", "Mode instructions:", mode.instructions);
 
-    for (const name of unique(mode.skills)) {
+    for (const name of unique(selectedSkills)) {
       const skill = this.catalogue.get(name);
       if (!skill) {
         this.warnOnce(`missing:${modeName}:${name}`, `Mode "${modeName}": unknown skill "${name}"`, warn);

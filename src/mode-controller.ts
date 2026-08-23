@@ -41,9 +41,13 @@ export class ModeController<ModelType = unknown> {
     const model = this.runtime.findModel(definition.provider, definition.modelId);
     if (!model) throw new ModeApplyError(`model ${definition.provider}/${definition.modelId} was not found`);
 
-    const activeTools = unique([...definition.tools, MODE_SWITCH_TOOL]);
-    const available = new Set(this.runtime.getAllToolNames());
-    const unknownTools = activeTools.filter((tool) => !available.has(tool));
+    const availableToolNames = this.runtime.getAllToolNames();
+    const activeTools = definition.excludeTools !== undefined
+      ? availableToolNames.filter((tool) => !definition.excludeTools!.includes(tool))
+      : [...(definition.tools ?? [])];
+    const withModeSwitch = unique([...activeTools, MODE_SWITCH_TOOL]);
+    const available = new Set(availableToolNames);
+    const unknownTools = withModeSwitch.filter((tool) => !available.has(tool));
     if (unknownTools.length > 0) throw new ModeApplyError(`unknown tools: ${unknownTools.join(", ")}`);
 
     if (!(await this.runtime.setModel(model))) {
@@ -51,12 +55,12 @@ export class ModeController<ModelType = unknown> {
     }
 
     if (definition.thinkingLevel) this.runtime.setThinkingLevel(definition.thinkingLevel);
-    this.runtime.setActiveTools(activeTools);
+    this.runtime.setActiveTools(withModeSwitch);
 
     const applied: AppliedMode = {
       name,
       definition,
-      activeTools,
+      activeTools: withModeSwitch,
       effectiveThinkingLevel: this.runtime.getThinkingLevel(),
     };
     this.current = applied;

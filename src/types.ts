@@ -5,8 +5,10 @@ export interface ModeDefinition {
   model: string;
   provider: string;
   modelId: string;
-  tools: string[];
-  skills: string[];
+  tools?: string[];
+  excludeTools?: string[];
+  skills?: string[];
+  excludeSkills?: string[];
   thinkingLevel?: ThinkingLevel;
   instructions?: string;
 }

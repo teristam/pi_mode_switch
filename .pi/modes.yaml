@@ -9,9 +9,13 @@ modes:
       - grep
       - find
       - ls
+    excludeTools:
+      - edit
     skills:
       - brainstorming
+      - test-driven-development
       - writing-plans
+      - writing-skills
     instructions: |
       Analyze the request and repository, ask necessary questions, and produce an implementation plan.
       Do not modify project files while this mode is active.

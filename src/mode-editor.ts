@@ -57,8 +57,10 @@ export function serializeModeConfig(config: ModeConfigSource): string {
     modes[name] = {
       model: mode.model,
       ...(mode.thinkingLevel ? { thinkingLevel: mode.thinkingLevel } : {}),
-      tools: [...mode.tools],
-      skills: [...mode.skills],
+      ...(mode.tools !== undefined ? { tools: [...mode.tools] } : {}),
+      ...(mode.excludeTools !== undefined ? { excludeTools: [...mode.excludeTools] } : {}),
+      ...(mode.skills !== undefined ? { skills: [...mode.skills] } : {}),
+      ...(mode.excludeSkills !== undefined ? { excludeSkills: [...mode.excludeSkills] } : {}),
       ...(mode.instructions ? { instructions: mode.instructions } : {}),
     };
   }
@@ -113,8 +115,10 @@ function displayList(values: string[]): string {
 function cloneMode(mode: ModeDefinition): ModeDefinition {
   return {
     ...mode,
-    tools: [...mode.tools],
-    skills: [...mode.skills],
+    ...(mode.tools !== undefined ? { tools: [...mode.tools] } : {}),
+    ...(mode.excludeTools !== undefined ? { excludeTools: [...mode.excludeTools] } : {}),
+    ...(mode.skills !== undefined ? { skills: [...mode.skills] } : {}),
+    ...(mode.excludeSkills !== undefined ? { excludeSkills: [...mode.excludeSkills] } : {}),
   };
 }
 
@@ -123,7 +127,7 @@ function modeItems(config: ModeConfigSource): SelectItem[] {
     ...Object.entries(config.modes).map(([name, mode]) => ({
       value: name,
       label: name,
-      description: `${mode.model} · ${mode.tools.length} tools · ${mode.skills.length} skills`,
+      description: `${mode.model} · ${mode.excludeTools !== undefined ? "all tools except denied" : `${mode.tools?.length ?? 0} tools`} · ${mode.excludeSkills !== undefined ? "all skills except denied" : `${mode.skills?.length ?? 0} skills`}`,
     })),
     { value: "__new__", label: "+ Create new mode", description: "Add another mode to this file" },
   ];
@@ -365,24 +369,80 @@ function modeSettings(
         values: ["(unset)", ...THINKING_LEVELS],
       },
       {
-        id: "tools",
-        label: "Tools",
-        description: "Built-in and extension tools enabled for this mode",
-        currentValue: displayList(working.tools),
+        id: "allowedTools",
+        label: "Allowed tools",
+        description: "Allowlist entry; inactive when not present in YAML",
+        currentValue: working.tools === undefined ? "(inactive)" : displayList(working.tools),
         submenu: (_currentValue, submenuDone) =>
-          new MultiSelectSubmenu(tui, theme, "Tools", "Select all tools this mode may use.", toolNames, working.tools, submenuDone, (values) => {
-            working.tools = values;
-          }),
+          new MultiSelectSubmenu(
+            tui,
+            theme,
+            "Allowed tools",
+            "Select tools to write to the tools allowlist. mode_switch is always enabled.",
+            toolNames.filter((name) => name !== "mode_switch"),
+            working.tools ?? [],
+            submenuDone,
+            (values) => {
+              working.tools = values;
+            },
+          ),
       },
       {
-        id: "skills",
-        label: "Skills",
-        description: "Skills auto-loaded into this mode's context",
-        currentValue: displayList(working.skills),
+        id: "bannedTools",
+        label: "Banned tools",
+        description: "Denylist entry; inactive when not present in YAML",
+        currentValue: working.excludeTools === undefined ? "(inactive)" : displayList(working.excludeTools),
         submenu: (_currentValue, submenuDone) =>
-          new MultiSelectSubmenu(tui, theme, "Skills", "Select skills discovered by pi.", skillNames, working.skills, submenuDone, (values) => {
-            working.skills = values;
-          }),
+          new MultiSelectSubmenu(
+            tui,
+            theme,
+            "Banned tools",
+            "Select tools to exclude. Newly discovered tools remain allowed unless banned.",
+            toolNames.filter((name) => name !== "mode_switch"),
+            working.excludeTools ?? [],
+            submenuDone,
+            (values) => {
+              working.excludeTools = values;
+            },
+          ),
+      },
+      {
+        id: "allowedSkills",
+        label: "Allowed skills",
+        description: "Allowlist entry; inactive when not present in YAML",
+        currentValue: working.skills === undefined ? "(inactive)" : displayList(working.skills),
+        submenu: (_currentValue, submenuDone) =>
+          new MultiSelectSubmenu(
+            tui,
+            theme,
+            "Allowed skills",
+            "Select skills to write to the skills allowlist.",
+            skillNames,
+            working.skills ?? [],
+            submenuDone,
+            (values) => {
+              working.skills = values;
+            },
+          ),
+      },
+      {
+        id: "bannedSkills",
+        label: "Banned skills",
+        description: "Denylist entry; inactive when not present in YAML",
+        currentValue: working.excludeSkills === undefined ? "(inactive)" : displayList(working.excludeSkills),
+        submenu: (_currentValue, submenuDone) =>
+          new MultiSelectSubmenu(
+            tui,
+            theme,
+            "Banned skills",
+            "Select skills to exclude. Other discovered skills are auto-loaded.",
+            skillNames,
+            working.excludeSkills ?? [],
+            submenuDone,
+            (values) => {
+              working.excludeSkills = values;
+            },
+          ),
       },
       {
         id: "instructions",
@@ -479,7 +539,12 @@ function validateDraft(config: ModeConfigSource, name: string, oldName: string |
   if (!mode.model || !mode.model.includes("/") || mode.model.startsWith("/") || mode.model.endsWith("/")) {
     return "Model must use provider/model-id";
   }
-  if (!Array.isArray(mode.tools) || !Array.isArray(mode.skills)) return "Tools and skills must be lists";
+  if (mode.tools === undefined && mode.excludeTools === undefined) {
+    return "Configure either allowed tools or banned tools";
+  }
+  if (mode.skills === undefined && mode.excludeSkills === undefined) {
+    return "Configure either allowed skills or banned skills";
+  }
   return undefined;
 }
 

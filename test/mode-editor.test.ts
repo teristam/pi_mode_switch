@@ -53,6 +53,31 @@ test("mode editor serializes only editable YAML fields", () => {
   assert.doesNotMatch(serialized, /modelId:/);
 });
 
+test("mode editor preserves combined allow and deny lists", () => {
+  const serialized = serializeModeConfig({
+    version: 1,
+    defaultMode: "code",
+    sourcePath: "/project/.pi/modes.yaml",
+    modes: {
+      code: {
+        model: "openai-codex/gpt-5.6-luna",
+        provider: "openai-codex",
+        modelId: "gpt-5.6-luna",
+        tools: ["read", "write"],
+        excludeTools: ["write"],
+        skills: ["test-driven-development"],
+        excludeSkills: ["officecli"],
+      },
+    },
+  });
+
+  const parsed = parseModeConfig(serialized, "/project/.pi/modes.yaml");
+  assert.deepEqual(parsed.modes.code.tools, ["read", "write"]);
+  assert.deepEqual(parsed.modes.code.excludeTools, ["write"]);
+  assert.deepEqual(parsed.modes.code.skills, ["test-driven-development"]);
+  assert.deepEqual(parsed.modes.code.excludeSkills, ["officecli"]);
+});
+
 test("mode editor serializes optional fields without inventing them", () => {
   const serialized = serializeModeConfig({
     version: 1,

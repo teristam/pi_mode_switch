@@ -12,7 +12,15 @@ import type {
 import { THINKING_LEVELS } from "./types.ts";
 
 const ROOT_FIELDS = new Set(["version", "defaultMode", "modes"]);
-const MODE_FIELDS = new Set(["model", "tools", "skills", "thinkingLevel", "instructions"]);
+const MODE_FIELDS = new Set([
+  "model",
+  "tools",
+  "excludeTools",
+  "skills",
+  "excludeSkills",
+  "thinkingLevel",
+  "instructions",
+]);
 
 export class ConfigValidationError extends Error {
   constructor(
@@ -64,6 +72,10 @@ function stringList(value: unknown, filePath: string, field: string): string[] {
   return normalized;
 }
 
+function optionalStringList(value: unknown, filePath: string, field: string): string[] | undefined {
+  return value === undefined ? undefined : stringList(value, filePath, field);
+}
+
 function parseMode(value: unknown, filePath: string, field: string): ModeDefinition {
   if (!isRecord(value)) fail(filePath, field, "mode must be a mapping");
   rejectUnknownFields(value, MODE_FIELDS, filePath, field);
@@ -90,12 +102,25 @@ function parseMode(value: unknown, filePath: string, field: string): ModeDefinit
     instructions = value.instructions;
   }
 
+  const tools = optionalStringList(value.tools, filePath, `${field}.tools`);
+  const excludeTools = optionalStringList(value.excludeTools, filePath, `${field}.excludeTools`);
+  const skills = optionalStringList(value.skills, filePath, `${field}.skills`);
+  const excludeSkills = optionalStringList(value.excludeSkills, filePath, `${field}.excludeSkills`);
+  if (tools === undefined && excludeTools === undefined) {
+    fail(filePath, field, "mode must define tools or excludeTools");
+  }
+  if (skills === undefined && excludeSkills === undefined) {
+    fail(filePath, field, "mode must define skills or excludeSkills");
+  }
+
   return {
     model,
     provider: model.slice(0, separator),
     modelId: model.slice(separator + 1),
-    tools: stringList(value.tools, filePath, `${field}.tools`),
-    skills: stringList(value.skills, filePath, `${field}.skills`),
+    ...(tools !== undefined ? { tools } : {}),
+    ...(excludeTools !== undefined ? { excludeTools } : {}),
+    ...(skills !== undefined ? { skills } : {}),
+    ...(excludeSkills !== undefined ? { excludeSkills } : {}),
     ...(thinkingLevel ? { thinkingLevel } : {}),
     ...(instructions ? { instructions } : {}),
   };

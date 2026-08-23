@@ -89,3 +89,26 @@ test("ModeController rejects an unknown model before mutation", async () => {
   );
   assert.deepEqual(fake.calls, []);
 });
+
+test("ModeController uses deny lists for all discovered tools", async () => {
+  const fake = runtime();
+  const denyConfig = structuredClone(CONFIG);
+  denyConfig.modes.plan.tools = ["read"];
+  denyConfig.modes.plan.excludeTools = ["edit", "future-tool"];
+
+  const applied = await new ModeController(denyConfig, fake.adapter).apply("plan");
+
+  assert.deepEqual(applied.activeTools, ["read", "mode_switch"]);
+  assert.deepEqual(fake.tools, ["read", "mode_switch"]);
+});
+
+test("ModeController allows every discovered tool with an empty deny list", async () => {
+  const fake = runtime();
+  const denyConfig = structuredClone(CONFIG);
+  denyConfig.modes.plan.tools = ["read"];
+  denyConfig.modes.plan.excludeTools = [];
+
+  const applied = await new ModeController(denyConfig, fake.adapter).apply("plan");
+
+  assert.deepEqual(applied.activeTools, ["read", "edit", "mode_switch"]);
+});
