@@ -1,0 +1,74 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { join } from "node:path";
+import { getModeConfigTargets, serializeModeConfig, type ModeConfigTarget } from "../src/mode-editor.ts";
+import { parseModeConfig } from "../src/config.ts";
+
+test("mode editor exposes global and trusted project targets", () => {
+  const targets = getModeConfigTargets("/home/user/.pi/agent", "/repo", ".pi", true);
+
+  assert.deepEqual(targets, [
+    { kind: "global", label: "Global", path: join("/home/user/.pi/agent", "modes.yaml") },
+    { kind: "project", label: "Project", path: join("/repo", ".pi", "modes.yaml") },
+  ] satisfies ModeConfigTarget[]);
+});
+
+test("mode editor hides untrusted project target", () => {
+  const targets = getModeConfigTargets("/agent", "/repo", ".pi", false);
+
+  assert.deepEqual(targets, [{ kind: "global", label: "Global", path: join("/agent", "modes.yaml") }]);
+});
+
+test("mode editor serializes only editable YAML fields", () => {
+  const source = {
+    version: 1 as const,
+    defaultMode: "plan",
+    sourcePath: "/repo/.pi/modes.yaml",
+    modes: {
+      plan: {
+        model: "openai-codex/gpt-5.6-sol",
+        provider: "openai-codex",
+        modelId: "gpt-5.6-sol",
+        thinkingLevel: "xhigh" as const,
+        tools: ["read", "grep"],
+        skills: ["brainstorming"],
+        instructions: "Plan only.",
+      },
+    },
+  };
+
+  const serialized = serializeModeConfig(source);
+  const parsed = parseModeConfig(serialized, source.sourcePath);
+
+  assert.deepEqual(parsed.modes.plan, {
+    model: "openai-codex/gpt-5.6-sol",
+    provider: "openai-codex",
+    modelId: "gpt-5.6-sol",
+    thinkingLevel: "xhigh",
+    tools: ["read", "grep"],
+    skills: ["brainstorming"],
+    instructions: "Plan only.",
+  });
+  assert.doesNotMatch(serialized, /provider:/);
+  assert.doesNotMatch(serialized, /modelId:/);
+});
+
+test("mode editor serializes optional fields without inventing them", () => {
+  const serialized = serializeModeConfig({
+    version: 1,
+    sourcePath: "/global/modes.yaml",
+    modes: {
+      code: {
+        model: "anthropic/claude",
+        provider: "anthropic",
+        modelId: "claude",
+        tools: ["read", "write"],
+        skills: [],
+      },
+    },
+  });
+
+  assert.equal(serialized.includes("defaultMode:"), false);
+  assert.equal(serialized.includes("thinkingLevel:"), false);
+  assert.equal(serialized.includes("instructions:"), false);
+});

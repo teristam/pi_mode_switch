@@ -4,12 +4,14 @@ import {
   CONFIG_DIR_NAME,
   getAgentDir,
   type ExtensionAPI,
+  type ExtensionCommandContext,
   type ExtensionContext,
   type Skill,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { loadModeConfig } from "./config.ts";
 import { MODE_SWITCH_TOOL, ModeController, type ModeRuntime } from "./mode-controller.ts";
+import { openModeEditor, writeModeConfigFile } from "./mode-editor.ts";
 import { SkillContextBuilder } from "./skills.ts";
 import type { AppliedMode, LoadedModeConfig, ModeSwitchState, ThinkingLevel } from "./types.ts";
 
@@ -42,6 +44,7 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
     let active: AppliedMode | undefined;
     let currentContext: ExtensionContext | undefined;
     let toolRegistered = false;
+    let discoveredSkillNames: string[] = [];
     const skills = new SkillContextBuilder();
     const report = dependencies.report ?? ((message: string) => console.error(`[pi-mode-switch] ${message}`));
 
@@ -58,6 +61,34 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
 
     function updateStatus(ctx: ExtensionContext): void {
       ctx.ui.setStatus("mode-switch", active ? `mode:${active.name}` : undefined);
+    }
+
+    async function editModeConfig(ctx: ExtensionCommandContext): Promise<void> {
+      const commandApi = pi as ExtensionAPI & {
+        getCommands?: () => Array<{ name: string; source?: string }>;
+      };
+      const commandSkills = commandApi.getCommands?.()
+        .filter((command) => command.source === "skill")
+        .map((command) => command.name.replace(/^skill:/, "")) ?? [];
+      const skillNames = [...new Set([...discoveredSkillNames, ...commandSkills])].sort();
+
+      const result = await openModeEditor(ctx, {
+        agentDir: (dependencies.getAgentDirectory ?? getAgentDir)(),
+        cwd: ctx.cwd,
+        configDirName: dependencies.configDirName ?? CONFIG_DIR_NAME,
+        projectTrusted: ctx.isProjectTrusted(),
+        toolNames: pi.getAllTools().map((tool) => tool.name),
+        skillNames,
+      });
+      if (!result) return;
+
+      try {
+        await writeModeConfigFile(result.target.path, result.config);
+        notify(ctx, `Saved ${result.target.path}; reloading mode configuration`, "info");
+        await ctx.reload();
+      } catch (error) {
+        notify(ctx, `Could not save ${result.target.path}: ${errorMessage(error)}`, "error");
+      }
     }
 
     async function activate(name: string, ctx: ExtensionContext, persist: boolean): Promise<AppliedMode> {
@@ -151,19 +182,14 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
       },
       handler: async (args, ctx) => {
         currentContext = ctx;
+        const name = args.trim();
+        if (!name) {
+          await editModeConfig(ctx);
+          return;
+        }
         if (!loaded?.config) {
           notify(ctx, unavailableMessage(), "error");
           return;
-        }
-
-        let name = args.trim();
-        if (!name) {
-          if (!ctx.hasUI) {
-            notify(ctx, `A mode name is required. Available: ${Object.keys(loaded.config.modes).join(", ")}`, "error");
-            return;
-          }
-          name = (await ctx.ui.select("Select mode", Object.keys(loaded.config.modes))) ?? "";
-          if (!name) return;
         }
 
         try {
@@ -211,7 +237,9 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
 
     pi.on("before_agent_start", (event, ctx) => {
       currentContext = ctx;
-      skills.setCatalogue((event.systemPromptOptions.skills ?? []) as Skill[]);
+      const catalogue = (event.systemPromptOptions.skills ?? []) as Skill[];
+      skills.setCatalogue(catalogue);
+      discoveredSkillNames = catalogue.map((skill) => skill.name);
     });
 
     pi.on("context", async (event, ctx) => {

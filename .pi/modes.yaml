@@ -1,0 +1,31 @@
+version: 1
+defaultMode: plan
+modes:
+  plan:
+    model: openai-codex/gpt-5.6-sol
+    thinkingLevel: xhigh
+    tools:
+      - read
+      - grep
+      - find
+      - ls
+    skills:
+      - brainstorming
+      - writing-plans
+    instructions: |
+      Analyze the request and repository, ask necessary questions, and produce an implementation plan.
+      Do not modify project files while this mode is active.
+  code:
+    model: openai-codex/gpt-5.6-luna
+    thinkingLevel: xhigh
+    tools:
+      - read
+      - bash
+      - edit
+      - write
+    skills:
+      - test-driven-development
+      - verification-before-completion
+    instructions: |
+      Implement the approved change with focused edits, tests, and verification.
+      Stop and explain unexpected complexity rather than bypassing it.

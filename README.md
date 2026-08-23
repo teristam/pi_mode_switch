@@ -49,7 +49,8 @@ After editing YAML, run `/reload`.
 
 ## Switch modes
 
-- `/mode` opens a selector.
+- `/mode` opens the TUI mode editor. Choose the global or trusted project `modes.yaml`, then edit an existing mode or create a new one.
+- The editor supports model, thinking level, tools, skills, and instructions. Saving validates the selected file and reloads the extension automatically.
 - `/mode code` switches directly.
 - The agent can call `mode_switch({ mode: "code" })`.
 
