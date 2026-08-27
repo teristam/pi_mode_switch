@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { join, relative, resolve } from "node:path";
 import test from "node:test";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { SkillContextBuilder } from "../src/skills.ts";
@@ -80,4 +81,20 @@ test("SkillContextBuilder auto-loads all discovered skills except denied skills"
   assert.match(content, /BEGIN AUTO-LOADED SKILL beta/);
   assert.doesNotMatch(content, /BEGIN AUTO-LOADED SKILL banned/);
   assert.deepEqual(warnings, []);
+});
+
+test("SkillContextBuilder resolves only exact discovered skill files", () => {
+  const cwd = resolve("skill-path-fixture");
+  const alphaPath = join(cwd, "skills", "alpha", "SKILL.md");
+  const builder = new SkillContextBuilder();
+  builder.setCatalogue([skill("alpha", alphaPath)]);
+
+  assert.equal(builder.skillNameForPath(alphaPath, cwd), "alpha");
+  assert.equal(builder.skillNameForPath(relative(cwd, alphaPath), cwd), "alpha");
+  assert.equal(builder.skillNameForPath(`@${relative(cwd, alphaPath)}`, cwd), "alpha");
+  assert.equal(
+    builder.skillNameForPath(join(cwd, "skills", "alpha", "references", "guide.md"), cwd),
+    undefined,
+  );
+  assert.equal(builder.skillNameForPath(join(cwd, "skills", "beta", "SKILL.md"), cwd), undefined);
 });

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { normalize, resolve } from "node:path";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { MODE_SWITCH_TOOL } from "./mode-controller.ts";
 import type { ModeDefinition } from "./types.ts";
@@ -10,8 +11,15 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+function pathKey(path: string, cwd: string): string {
+  const withoutMarker = path.startsWith("@") ? path.slice(1) : path;
+  const normalized = normalize(resolve(cwd, withoutMarker));
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
 export class SkillContextBuilder {
   private catalogue = new Map<string, Skill>();
+  private catalogueByPath = new Map<string, string>();
   private contentCache = new Map<string, Promise<string | undefined>>();
   private warned = new Set<string>();
 
@@ -19,6 +27,13 @@ export class SkillContextBuilder {
 
   setCatalogue(skills: Skill[]): void {
     this.catalogue = new Map(skills.map((skill) => [skill.name, skill]));
+    this.catalogueByPath = new Map(
+      skills.map((skill) => [pathKey(skill.filePath, skill.baseDir), skill.name]),
+    );
+  }
+
+  skillNameForPath(path: string, cwd: string): string | undefined {
+    return this.catalogueByPath.get(pathKey(path, cwd));
   }
 
   private warnOnce(key: string, message: string, warn: SkillWarning): void {
