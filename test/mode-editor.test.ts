@@ -78,6 +78,48 @@ test("mode editor preserves combined allow and deny lists", () => {
   assert.deepEqual(parsed.modes.code.excludeSkills, ["officecli"]);
 });
 
+test("mode editor preserves trigger skill selections", () => {
+  const serialized = serializeModeConfig({
+    version: 1,
+    defaultMode: "code",
+    sourcePath: "/project/.pi/modes.yaml",
+    modes: {
+      code: {
+        model: "openai-codex/gpt-5.6-luna",
+        provider: "openai-codex",
+        modelId: "gpt-5.6-luna",
+        tools: ["read", "write"],
+        skills: ["test-driven-development"],
+        triggerSkills: ["test-driven-development", "verification-before-completion"],
+      },
+    },
+  });
+
+  const parsed = parseModeConfig(serialized, "/project/.pi/modes.yaml");
+  assert.deepEqual(parsed.modes.code.triggerSkills, [
+    "test-driven-development",
+    "verification-before-completion",
+  ]);
+});
+
+test("mode editor does not invent triggerSkills", () => {
+  const serialized = serializeModeConfig({
+    version: 1,
+    sourcePath: "/project/.pi/modes.yaml",
+    modes: {
+      code: {
+        model: "openai/gpt",
+        provider: "openai",
+        modelId: "gpt",
+        tools: [],
+        skills: [],
+      },
+    },
+  });
+
+  assert.doesNotMatch(serialized, /triggerSkills:/);
+});
+
 test("mode editor serializes optional fields without inventing them", () => {
   const serialized = serializeModeConfig({
     version: 1,

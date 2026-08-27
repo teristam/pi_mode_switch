@@ -61,6 +61,7 @@ export function serializeModeConfig(config: ModeConfigSource): string {
       ...(mode.excludeTools !== undefined ? { excludeTools: [...mode.excludeTools] } : {}),
       ...(mode.skills !== undefined ? { skills: [...mode.skills] } : {}),
       ...(mode.excludeSkills !== undefined ? { excludeSkills: [...mode.excludeSkills] } : {}),
+      ...(mode.triggerSkills !== undefined ? { triggerSkills: [...mode.triggerSkills] } : {}),
       ...(mode.instructions ? { instructions: mode.instructions } : {}),
     };
   }
@@ -119,6 +120,7 @@ function cloneMode(mode: ModeDefinition): ModeDefinition {
     ...(mode.excludeTools !== undefined ? { excludeTools: [...mode.excludeTools] } : {}),
     ...(mode.skills !== undefined ? { skills: [...mode.skills] } : {}),
     ...(mode.excludeSkills !== undefined ? { excludeSkills: [...mode.excludeSkills] } : {}),
+    ...(mode.triggerSkills !== undefined ? { triggerSkills: [...mode.triggerSkills] } : {}),
   };
 }
 
@@ -127,7 +129,7 @@ function modeItems(config: ModeConfigSource): SelectItem[] {
     ...Object.entries(config.modes).map(([name, mode]) => ({
       value: name,
       label: name,
-      description: `${mode.model} · ${mode.excludeTools !== undefined ? "all tools except denied" : `${mode.tools?.length ?? 0} tools`} · ${mode.excludeSkills !== undefined ? "all skills except denied" : `${mode.skills?.length ?? 0} skills`}`,
+      description: `${mode.model} · ${mode.excludeTools !== undefined ? "all tools except denied" : `${mode.tools?.length ?? 0} tools`} · ${mode.excludeSkills !== undefined ? "all skills except denied" : `${mode.skills?.length ?? 0} skills`} · ${mode.triggerSkills?.length ?? 0} triggers`,
     })),
     { value: "__new__", label: "+ Create new mode", description: "Add another mode to this file" },
   ];
@@ -441,6 +443,26 @@ function modeSettings(
             submenuDone,
             (values) => {
               working.excludeSkills = values;
+            },
+          ),
+      },
+      {
+        id: "triggerSkills",
+        label: "Trigger skills",
+        description: "Skills that automatically activate this mode",
+        currentValue: displayList(working.triggerSkills ?? []),
+        submenu: (_currentValue, submenuDone) =>
+          new MultiSelectSubmenu(
+            tui,
+            theme,
+            "Trigger skills",
+            "Select skills that switch to this mode when invoked or read.",
+            skillNames,
+            working.triggerSkills ?? [],
+            submenuDone,
+            (values) => {
+              if (values.length > 0) working.triggerSkills = values;
+              else delete working.triggerSkills;
             },
           ),
       },
