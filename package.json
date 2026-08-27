@@ -9,6 +9,20 @@
     "agent-modes"
   ],
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/teristam/pi_mode_switch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/teristam/pi_mode_switch/issues"
+  },
+  "homepage": "https://github.com/teristam/pi_mode_switch#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "src",
     "README.md",
