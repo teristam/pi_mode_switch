@@ -21,17 +21,77 @@ modes:
     thinkingLevel: high
     tools: [read]
     skills: []
+    triggerSkills: [writing-plans]
     instructions: Plan only.
   code:
     model: provider/code-model
     thinkingLevel: medium
     tools: [read, edit]
     skills: []
+    triggerSkills: [brainstorming, missing-trigger]
     instructions: Code now.
 `,
     "utf8",
   );
   return { root, agentDir };
+}
+
+async function triggerHarness(options: { failCode?: boolean } = {}) {
+  const { root, agentDir } = await fixture();
+  const handlers = new Map<string, Function>();
+  const entries: Array<{ customType: string; data: unknown }> = [];
+  const reports: string[] = [];
+  let activeTools = ["read", "edit"];
+  let thinking = "off";
+
+  const pi = {
+    on: (name: string, handler: Function) => handlers.set(name, handler),
+    registerCommand: () => undefined,
+    registerTool: () => undefined,
+    getCommands: () => [
+      { name: "skill:brainstorming", source: "skill", sourceInfo: {} },
+      { name: "skill:writing-plans", source: "skill", sourceInfo: {} },
+      { name: "skill:not-a-trigger", source: "skill", sourceInfo: {} },
+    ],
+    getAllTools: () => ["read", "edit", "mode_switch"].map((name) => ({ name })),
+    getActiveTools: () => activeTools,
+    setActiveTools: (names: string[]) => {
+      activeTools = names;
+    },
+    setModel: async (model: any) => !(options.failCode && model.id === "code-model"),
+    setThinkingLevel: (level: string) => {
+      thinking = level;
+    },
+    getThinkingLevel: () => thinking,
+    appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
+  } as unknown as ExtensionAPI;
+
+  const ctx = {
+    cwd: root,
+    hasUI: false,
+    mode: "json",
+    isProjectTrusted: () => false,
+    modelRegistry: { find: (provider: string, id: string) => ({ provider, id }) },
+    sessionManager: { getBranch: () => [] },
+    ui: { notify: () => undefined, setStatus: () => undefined },
+  } as unknown as ExtensionContext;
+
+  createModeSwitchExtension({
+    getAgentDirectory: () => agentDir,
+    report: (message) => reports.push(message),
+  })(pi);
+  await handlers.get("session_start")!({ reason: "startup" }, ctx);
+
+  return {
+    root,
+    handlers,
+    entries,
+    reports,
+    ctx,
+    get activeTools() {
+      return activeTools;
+    },
+  };
 }
 
 test("command and tool share switching, persistence, status, and schema", async () => {
@@ -147,6 +207,56 @@ test("context uses the mode selected by the immediately preceding tool call", as
   const second = await handlers.get("context")!({ messages: [] }, ctx);
   assert.match(second.messages.at(-1).content, /\[ACTIVE MODE: code\]/);
   assert.doesNotMatch(second.messages.at(-1).content, /\[ACTIVE MODE: plan\]/);
+});
+
+test("explicit skill commands activate and persist their target mode", async () => {
+  const harness = await triggerHarness();
+  const event = { text: "/skill:brainstorming focus on behavior", source: "interactive" };
+
+  const result = await harness.handlers.get("input")!(event, harness.ctx);
+
+  assert.deepEqual(result, { action: "continue" });
+  assert.equal(event.text, "/skill:brainstorming focus on behavior");
+  assert.deepEqual(harness.activeTools, ["read", "edit", "mode_switch"]);
+  assert.deepEqual(harness.entries, [
+    { customType: "mode-switch-state", data: { mode: "code" } },
+  ]);
+});
+
+test("explicit skill triggers ignore unavailable and unmapped skills and skip an already-active mode", async () => {
+  const harness = await triggerHarness();
+
+  const unavailable = await harness.handlers.get("input")!(
+    { text: "/skill:missing-trigger", source: "interactive" },
+    harness.ctx,
+  );
+  const unmapped = await harness.handlers.get("input")!(
+    { text: "/skill:not-a-trigger", source: "interactive" },
+    harness.ctx,
+  );
+  const alreadyActive = await harness.handlers.get("input")!(
+    { text: "/skill:writing-plans", source: "interactive" },
+    harness.ctx,
+  );
+
+  assert.deepEqual(unavailable, { action: "continue" });
+  assert.deepEqual(unmapped, { action: "continue" });
+  assert.deepEqual(alreadyActive, { action: "continue" });
+  assert.deepEqual(harness.entries, []);
+});
+
+test("explicit skill trigger failure consumes the command", async () => {
+  const harness = await triggerHarness({ failCode: true });
+
+  const result = await harness.handlers.get("input")!(
+    { text: "/skill:brainstorming", source: "interactive" },
+    harness.ctx,
+  );
+
+  assert.deepEqual(result, { action: "handled" });
+  assert.deepEqual(harness.activeTools, ["read", "mode_switch"]);
+  assert.deepEqual(harness.entries, []);
+  assert.ok(harness.reports.some((message) => message.includes("credentials are unavailable")));
 });
 
 test("mode_switch remains registered without config and reports expected paths", async () => {

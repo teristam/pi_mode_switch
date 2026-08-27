@@ -42,6 +42,7 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
     let loaded: LoadedModeConfig | undefined;
     let controller: ModeController<unknown> | undefined;
     let active: AppliedMode | undefined;
+    let triggerModes = new Map<string, string>();
     let currentContext: ExtensionContext | undefined;
     let toolRegistered = false;
     let discoveredSkillNames: string[] = [];
@@ -99,6 +100,14 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
       updateStatus(ctx);
       if (persist) pi.appendEntry<ModeSwitchState>(STATE_TYPE, { mode: name });
       return applied;
+    }
+
+    async function activateForSkill(skillName: string, ctx: ExtensionContext): Promise<boolean> {
+      const modeName = triggerModes.get(skillName);
+      if (!modeName || active?.name === modeName) return false;
+      await activate(modeName, ctx, true);
+      notify(ctx, `Skill "${skillName}" activated mode "${modeName}"`, "info");
+      return true;
     }
 
     async function restore(ctx: ExtensionContext): Promise<void> {
@@ -207,6 +216,25 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
       },
     });
 
+    pi.on("input", async (event, ctx) => {
+      const match = /^\/skill:([^\s]+)(?:\s|$)/.exec(event.text);
+      const skillName = match?.[1];
+      if (!skillName || !triggerModes.has(skillName)) return { action: "continue" };
+
+      const isSkillCommand = pi.getCommands().some(
+        (command) => command.source === "skill" && command.name === `skill:${skillName}`,
+      );
+      if (!isSkillCommand) return { action: "continue" };
+
+      try {
+        await activateForSkill(skillName, ctx);
+        return { action: "continue" };
+      } catch (error) {
+        notify(ctx, `Could not activate mode for skill "${skillName}": ${errorMessage(error)}`, "error");
+        return { action: "handled" };
+      }
+    });
+
     pi.on("session_start", async (_event, ctx) => {
       currentContext = ctx;
       loaded = await loadModeConfig({
@@ -218,6 +246,11 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
       for (const diagnostic of loaded.diagnostics) notify(ctx, diagnostic.message);
 
       if (loaded.config) {
+        triggerModes = new Map(
+          Object.entries(loaded.config.modes).flatMap(([modeName, mode]) =>
+            (mode.triggerSkills ?? []).map((skillName) => [skillName, modeName] as const),
+          ),
+        );
         const runtime: ModeRuntime<unknown> = {
           getAllToolNames: () => pi.getAllTools().map((tool) => tool.name),
           findModel: (provider, modelId) => currentContext?.modelRegistry.find(provider, modelId),
@@ -229,6 +262,7 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
         controller = new ModeController(loaded.config, runtime);
       } else {
         controller = undefined;
+        triggerModes = new Map();
       }
 
       registerModeTool();
