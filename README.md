@@ -6,17 +6,23 @@ A pi extension that loads complete agent modes from YAML. A mode selects one mod
 
 ## Install
 
-From this checkout:
+Install from npm for normal use:
+
+```bash
+pi install npm:pi-mode-switch
+```
+
+For one run without adding it to your Pi settings:
+
+```bash
+pi -e npm:pi-mode-switch
+```
+
+From this checkout, install and load the local package for development:
 
 ```bash
 npm install
 pi install .
-```
-
-For one run without installing:
-
-```bash
-pi -e .
 ```
 
 ## Configure
