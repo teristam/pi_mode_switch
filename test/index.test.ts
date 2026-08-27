@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -91,6 +91,17 @@ async function triggerHarness(options: { failCode?: boolean } = {}) {
     get activeTools() {
       return activeTools;
     },
+  };
+}
+
+function discoveredSkill(name: string, filePath: string) {
+  return {
+    name,
+    description: `${name} description`,
+    filePath,
+    baseDir: dirname(filePath),
+    sourceInfo: {},
+    disableModelInvocation: false,
   };
 }
 
@@ -257,6 +268,82 @@ test("explicit skill trigger failure consumes the command", async () => {
   assert.deepEqual(harness.activeTools, ["read", "mode_switch"]);
   assert.deepEqual(harness.entries, []);
   assert.ok(harness.reports.some((message) => message.includes("credentials are unavailable")));
+});
+
+test("reading a discovered skill activates its mode before the next context", async () => {
+  const harness = await triggerHarness();
+  const skillPath = join(harness.root, "skills", "brainstorming", "SKILL.md");
+  await harness.handlers.get("before_agent_start")!(
+    { systemPromptOptions: { skills: [discoveredSkill("brainstorming", skillPath)] } },
+    harness.ctx,
+  );
+
+  const result = await harness.handlers.get("tool_call")!(
+    { toolName: "read", toolCallId: "read-1", input: { path: relative(harness.root, skillPath) } },
+    harness.ctx,
+  );
+  const context = await harness.handlers.get("context")!({ messages: [] }, harness.ctx);
+
+  assert.equal(result, undefined);
+  assert.deepEqual(harness.activeTools, ["read", "edit", "mode_switch"]);
+  assert.deepEqual(harness.entries, [
+    { customType: "mode-switch-state", data: { mode: "code" } },
+  ]);
+  assert.match(context.messages.at(-1).content, /\[ACTIVE MODE: code\]/);
+});
+
+test("ordinary and skill reference reads do not trigger modes", async () => {
+  const harness = await triggerHarness();
+  const skillPath = join(harness.root, "skills", "brainstorming", "SKILL.md");
+  await harness.handlers.get("before_agent_start")!(
+    { systemPromptOptions: { skills: [discoveredSkill("brainstorming", skillPath)] } },
+    harness.ctx,
+  );
+
+  const ordinary = await harness.handlers.get("tool_call")!(
+    { toolName: "read", toolCallId: "read-2", input: { path: "README.md" } },
+    harness.ctx,
+  );
+  const reference = await harness.handlers.get("tool_call")!(
+    {
+      toolName: "read",
+      toolCallId: "read-3",
+      input: { path: join(dirname(skillPath), "references", "guide.md") },
+    },
+    harness.ctx,
+  );
+
+  assert.equal(ordinary, undefined);
+  assert.equal(reference, undefined);
+  assert.deepEqual(harness.entries, []);
+});
+
+test("a failed skill-read trigger blocks the read", async () => {
+  const harness = await triggerHarness({ failCode: true });
+  const skillPath = join(harness.root, "skills", "brainstorming", "SKILL.md");
+  await harness.handlers.get("before_agent_start")!(
+    { systemPromptOptions: { skills: [discoveredSkill("brainstorming", skillPath)] } },
+    harness.ctx,
+  );
+
+  const result = await harness.handlers.get("tool_call")!(
+    { toolName: "read", toolCallId: "read-4", input: { path: `@${skillPath}` } },
+    harness.ctx,
+  );
+
+  assert.equal(result.block, true);
+  assert.match(result.reason, /credentials are unavailable/);
+  assert.deepEqual(harness.entries, []);
+});
+
+test("unknown configured trigger skills warn once after discovery", async () => {
+  const harness = await triggerHarness();
+  const event = { systemPromptOptions: { skills: [] } };
+
+  await harness.handlers.get("before_agent_start")!(event, harness.ctx);
+  await harness.handlers.get("before_agent_start")!(event, harness.ctx);
+
+  assert.equal(harness.reports.filter((message) => message.includes("missing-trigger")).length, 1);
 });
 
 test("mode_switch remains registered without config and reports expected paths", async () => {

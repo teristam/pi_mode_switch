@@ -3,6 +3,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import {
   CONFIG_DIR_NAME,
   getAgentDir,
+  isToolCallEventType,
   type ExtensionAPI,
   type ExtensionCommandContext,
   type ExtensionContext,
@@ -46,6 +47,7 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
     let currentContext: ExtensionContext | undefined;
     let toolRegistered = false;
     let discoveredSkillNames: string[] = [];
+    const warnedTriggerSkills = new Set<string>();
     const skills = new SkillContextBuilder();
     const report = dependencies.report ?? ((message: string) => console.error(`[pi-mode-switch] ${message}`));
 
@@ -280,6 +282,26 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
       const catalogue = (event.systemPromptOptions.skills ?? []) as Skill[];
       skills.setCatalogue(catalogue);
       discoveredSkillNames = catalogue.map((skill) => skill.name);
+      const discovered = new Set(discoveredSkillNames);
+      for (const [skillName, modeName] of triggerModes) {
+        if (discovered.has(skillName) || warnedTriggerSkills.has(skillName)) continue;
+        warnedTriggerSkills.add(skillName);
+        notify(ctx, `Mode "${modeName}": unknown trigger skill "${skillName}"`);
+      }
+    });
+
+    pi.on("tool_call", async (event, ctx) => {
+      if (!isToolCallEventType("read", event)) return;
+      const skillName = skills.skillNameForPath(event.input.path, ctx.cwd);
+      if (!skillName || !triggerModes.has(skillName)) return;
+
+      try {
+        await activateForSkill(skillName, ctx);
+      } catch (error) {
+        const reason = `Could not activate mode for skill "${skillName}": ${errorMessage(error)}`;
+        notify(ctx, reason, "error");
+        return { block: true, reason };
+      }
     });
 
     pi.on("context", async (event, ctx) => {
