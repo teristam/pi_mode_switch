@@ -28,7 +28,7 @@ Copy `modes.example.yaml` to either location:
 
 Project configuration is read only after pi trusts the project. Project modes replace global modes with the same name; other global modes remain. A project `defaultMode` overrides the global value.
 
-Every mode requires `model` and either `tools` or `excludeTools`, plus either `skills` or `excludeSkills`. Use `provider/model-id`; the provider is the text before the first slash. `thinkingLevel` and `instructions` are optional. Allow and deny fields may coexist; deny fields take precedence and automatically include newly discovered resources unless banned.
+Every mode requires `model` and either `tools` or `excludeTools`, plus either `skills` or `excludeSkills`. `triggerSkills` is optional and maps explicit or agent-loaded skills to that mode. A skill can trigger only one mode. Use `provider/model-id`; the provider is the text before the first slash. `thinkingLevel` and `instructions` are optional. Allow and deny fields may coexist; deny fields take precedence and automatically include newly discovered resources unless banned.
 
 ```yaml
 version: 1
@@ -39,6 +39,7 @@ modes:
     thinkingLevel: high
     tools: [read, grep, find, ls]
     skills: [brainstorming, writing-plans]
+    triggerSkills: [brainstorming, writing-plans]
     instructions: |
       Plan only. Do not modify files.
 ```
@@ -50,7 +51,7 @@ After editing YAML, run `/reload`.
 ## Switch modes
 
 - `/mode` opens the TUI mode editor. Choose the global or trusted project `modes.yaml`, then edit an existing mode or create a new one.
-- The editor supports model, thinking level, instructions, and separate `Allowed tools`, `Banned tools`, `Allowed skills`, and `Banned skills` entries. Saving validates the selected file and reloads the extension automatically.
+- The editor supports model, thinking level, instructions, separate `Allowed tools`, `Banned tools`, `Allowed skills`, `Banned skills`, and `Trigger skills` entries. Saving validates the selected file and reloads the extension automatically.
 - `/mode code` switches directly.
 - The agent can call `mode_switch({ mode: "code" })`.
 
@@ -58,13 +59,22 @@ New sessions use `defaultMode`. Explicit switches are stored as branch-aware cus
 
 Selected skills are read in full and attached as ephemeral context before every model request. Other discovered skills remain available through pi's normal skill catalogue.
 
+## Skill-triggered modes
+
+A mode's optional `triggerSkills` list is separate from `skills` and `excludeSkills`, which only control auto-loaded context. A mapped skill switches modes in either case:
+
+- The user invokes `/skill:name`.
+- The agent reads the exact discovered `SKILL.md` for that skill.
+
+The switch happens before the explicit skill is expanded or the discovered skill file is read. Successful switches use the same branch-aware persistence as `/mode`; if the target is already active, no duplicate state is stored. If activation fails, the explicit command or skill-file read is blocked instead of running in the previous mode. Reads of skill reference files and assets do not trigger a switch.
+
 ## Errors
 
-Invalid files are reported with their path and field. An invalid project file does not disable a valid global file. Unknown models/tools reject a switch before tool or thinking state changes. Unknown or unreadable skills are warned and omitted while the rest of the mode remains active.
+Invalid files are reported with their path and field. An invalid project file does not disable a valid global file. Ambiguous skill trigger assignments are rejected. Unknown models/tools reject a switch before tool or thinking state changes. Unknown or unreadable skills are warned and omitted while the rest of the mode remains active.
 
 ## Security boundary
 
-Modes are workflow profiles, not sandboxes. An enabled `bash` tool can still modify files, and the agent is explicitly allowed to switch from a plan mode to a code mode. Use a separate permission or sandbox extension when enforcement is required.
+Modes are workflow profiles, not sandboxes. An enabled `bash` tool can still modify files, and the agent is explicitly allowed to switch from a plan mode to a code mode. A skill-triggered switch does not cancel sibling tool calls already emitted in the same assistant message. Use a separate permission or sandbox extension when enforcement is required.
 
 ## Develop
 

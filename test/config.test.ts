@@ -296,6 +296,11 @@ test("modes.example.yaml stays valid", async () => {
   const parsed = parseModeConfig(await readFile(path, "utf8"), path);
   assert.equal(parsed.defaultMode, "plan");
   assert.deepEqual(Object.keys(parsed.modes), ["plan", "code"]);
+  assert.deepEqual(parsed.modes.plan.triggerSkills, ["brainstorming", "writing-plans"]);
+  assert.deepEqual(parsed.modes.code.triggerSkills, [
+    "test-driven-development",
+    "verification-before-completion",
+  ]);
 });
 
 test("loadModeConfig reports both paths when neither file exists", async () => {
