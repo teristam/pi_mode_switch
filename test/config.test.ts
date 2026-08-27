@@ -98,6 +98,63 @@ test("parseModeConfig rejects a mode without allow or deny lists", () => {
   );
 });
 
+test("parseModeConfig normalizes triggerSkills", () => {
+  const parsed = parseModeConfig(
+    `
+version: 1
+defaultMode: plan
+modes:
+  plan:
+    model: openai/gpt
+    tools: [read]
+    skills: []
+    triggerSkills: [brainstorming, brainstorming, writing-plans]
+`,
+    "/config/modes.yaml",
+  );
+
+  assert.deepEqual(parsed.modes.plan.triggerSkills, ["brainstorming", "writing-plans"]);
+});
+
+test("parseModeConfig rejects one trigger skill assigned to multiple modes", () => {
+  assert.throws(
+    () => parseModeConfig(
+      `
+version: 1
+defaultMode: plan
+modes:
+  plan:
+    model: openai/plan
+    tools: [read]
+    skills: []
+    triggerSkills: [brainstorming]
+  code:
+    model: openai/code
+    tools: [read, edit]
+    skills: []
+    triggerSkills: [brainstorming]
+`,
+      "/config/modes.yaml",
+    ),
+    (error: unknown) =>
+      error instanceof ConfigValidationError &&
+      error.message.includes('trigger skill "brainstorming" is already assigned to mode "plan"'),
+  );
+});
+
+test("parseModeConfig rejects malformed triggerSkills", () => {
+  assert.throws(
+    () => parseModeConfig(VALID.replace("    skills:", "    triggerSkills: read\n    skills:"), "/config/modes.yaml"),
+    (error: unknown) => error instanceof ConfigValidationError && error.message.includes("triggerSkills must be an array"),
+  );
+  assert.throws(
+    () => parseModeConfig(VALID.replace("    skills:", "    triggerSkills: [\"\"]\n    skills:"), "/config/modes.yaml"),
+    (error: unknown) =>
+      error instanceof ConfigValidationError &&
+      error.message.includes("triggerSkills entries must be non-empty strings"),
+  );
+});
+
 const GLOBAL = `
 version: 1
 defaultMode: plan
@@ -136,6 +193,48 @@ test("mergeModeConfigs replaces complete project modes", () => {
 function missingFile(path: string): NodeJS.ErrnoException {
   return Object.assign(new Error(`missing ${path}`), { code: "ENOENT" });
 }
+
+test("mergeModeConfigs keeps the replacement mode's triggerSkills", () => {
+  const global = parseModeConfig(
+    GLOBAL.replace("    model: anthropic/old-code", "    triggerSkills: [old-code-skill]\n    model: anthropic/old-code"),
+    "/global/modes.yaml",
+  );
+  const project = parseModeConfig(
+    PROJECT.replace("    model: anthropic/new-code", "    triggerSkills: [new-code-skill]\n    model: anthropic/new-code"),
+    "/project/modes.yaml",
+  );
+
+  const merged = mergeModeConfigs(global, project);
+
+  assert.deepEqual(merged.modes.code.triggerSkills, ["new-code-skill"]);
+});
+
+test("loadModeConfig ignores a project trigger conflict and retains global config", async () => {
+  const globalPath = join("/agent", "modes.yaml");
+  const projectPath = join("/repo", ".pi", "modes.yaml");
+  const globalWithTrigger = GLOBAL.replace("    skills: []", "    skills: []\n    triggerSkills: [brainstorming]");
+  const projectWithConflict = PROJECT.replace(
+    "    skills: [test-driven-development]",
+    "    skills: [test-driven-development]\n    triggerSkills: [brainstorming]",
+  );
+
+  const loaded = await loadModeConfig({
+    cwd: "/repo",
+    agentDir: "/agent",
+    configDirName: ".pi",
+    projectTrusted: true,
+    readText: async (path) => {
+      if (path === globalPath) return globalWithTrigger;
+      if (path === projectPath) return projectWithConflict;
+      throw missingFile(path);
+    },
+  });
+
+  assert.equal(loaded.config?.defaultMode, "plan");
+  assert.deepEqual(loaded.config?.modes.plan.triggerSkills, ["brainstorming"]);
+  assert.equal(loaded.config?.modes.code.model, "anthropic/old-code");
+  assert.ok(loaded.diagnostics.some((diagnostic) => diagnostic.message.includes("already assigned")));
+});
 
 test("loadModeConfig does not read an untrusted project file", async () => {
   const reads: string[] = [];

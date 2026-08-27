@@ -9,6 +9,7 @@ export interface ModeDefinition {
   excludeTools?: string[];
   skills?: string[];
   excludeSkills?: string[];
+  triggerSkills?: string[];
   thinkingLevel?: ThinkingLevel;
   instructions?: string;
 }

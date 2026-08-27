@@ -18,6 +18,7 @@ const MODE_FIELDS = new Set([
   "excludeTools",
   "skills",
   "excludeSkills",
+  "triggerSkills",
   "thinkingLevel",
   "instructions",
 ]);
@@ -76,6 +77,26 @@ function optionalStringList(value: unknown, filePath: string, field: string): st
   return value === undefined ? undefined : stringList(value, filePath, field);
 }
 
+function validateTriggerAssignments(
+  modes: Record<string, ModeDefinition>,
+  filePath: string,
+): void {
+  const owners = new Map<string, string>();
+  for (const [modeName, mode] of Object.entries(modes)) {
+    for (const skillName of mode.triggerSkills ?? []) {
+      const existing = owners.get(skillName);
+      if (existing && existing !== modeName) {
+        fail(
+          filePath,
+          `modes.${modeName}.triggerSkills`,
+          `trigger skill "${skillName}" is already assigned to mode "${existing}"`,
+        );
+      }
+      owners.set(skillName, modeName);
+    }
+  }
+}
+
 function parseMode(value: unknown, filePath: string, field: string): ModeDefinition {
   if (!isRecord(value)) fail(filePath, field, "mode must be a mapping");
   rejectUnknownFields(value, MODE_FIELDS, filePath, field);
@@ -106,6 +127,7 @@ function parseMode(value: unknown, filePath: string, field: string): ModeDefinit
   const excludeTools = optionalStringList(value.excludeTools, filePath, `${field}.excludeTools`);
   const skills = optionalStringList(value.skills, filePath, `${field}.skills`);
   const excludeSkills = optionalStringList(value.excludeSkills, filePath, `${field}.excludeSkills`);
+  const triggerSkills = optionalStringList(value.triggerSkills, filePath, `${field}.triggerSkills`);
   if (tools === undefined && excludeTools === undefined) {
     fail(filePath, field, "mode must define tools or excludeTools");
   }
@@ -121,6 +143,7 @@ function parseMode(value: unknown, filePath: string, field: string): ModeDefinit
     ...(excludeTools !== undefined ? { excludeTools } : {}),
     ...(skills !== undefined ? { skills } : {}),
     ...(excludeSkills !== undefined ? { excludeSkills } : {}),
+    ...(triggerSkills !== undefined ? { triggerSkills } : {}),
     ...(thinkingLevel ? { thinkingLevel } : {}),
     ...(instructions ? { instructions } : {}),
   };
@@ -154,6 +177,7 @@ export function parseModeConfig(source: string, filePath: string): ModeConfigSou
     }
     modes[name] = parseMode(mode, filePath, `modes.${name}`);
   }
+  validateTriggerAssignments(modes, filePath);
 
   return { version: 1, ...(defaultMode ? { defaultMode } : {}), modes, sourcePath: filePath };
 }
@@ -168,6 +192,7 @@ export function mergeModeConfigs(
     (path): path is string => Boolean(path),
   );
   const diagnosticPath = sourcePaths.at(-1) ?? "modes.yaml";
+  validateTriggerAssignments(modes, diagnosticPath);
 
   if (!defaultMode) fail(diagnosticPath, "defaultMode", "defaultMode is required after merging config files");
   if (!modes[defaultMode]) {
