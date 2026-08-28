@@ -346,6 +346,55 @@ test("unknown configured trigger skills warn once after discovery", async () => 
   assert.equal(harness.reports.filter((message) => message.includes("missing-trigger")).length, 1);
 });
 
+test("activates the bundled default mode when no user config exists", async () => {
+  const root = join(tmpdir(), `pi-mode-switch-builtin-${process.pid}-${Date.now()}`);
+  const agentDir = join(root, "agent");
+  await mkdir(agentDir, { recursive: true });
+  const handlers = new Map<string, Function>();
+  const tools = new Map<string, any>();
+  let activeTools = ["read"];
+  let selectedModel: any;
+  let thinking = "off";
+
+  const pi = {
+    on: (name: string, handler: Function) => handlers.set(name, handler),
+    registerCommand: () => undefined,
+    registerTool: (tool: any) => tools.set(tool.name, tool),
+    getCommands: () => [],
+    getAllTools: () => ["read", "edit", "find", "grep", "ls", ...tools.keys()].map((name) => ({ name })),
+    getActiveTools: () => activeTools,
+    setActiveTools: (names: string[]) => {
+      activeTools = names;
+    },
+    setModel: async (model: any) => {
+      selectedModel = model;
+      return true;
+    },
+    setThinkingLevel: (level: string) => {
+      thinking = level;
+    },
+    getThinkingLevel: () => thinking,
+    appendEntry: () => undefined,
+  } as unknown as ExtensionAPI;
+
+  const ctx = {
+    cwd: root,
+    hasUI: false,
+    mode: "json",
+    isProjectTrusted: () => false,
+    modelRegistry: { find: (provider: string, id: string) => ({ provider, id }) },
+    sessionManager: { getBranch: () => [] },
+    ui: { notify: () => undefined, setStatus: () => undefined },
+  } as unknown as ExtensionContext;
+
+  createModeSwitchExtension({ getAgentDirectory: () => agentDir })(pi);
+  await handlers.get("session_start")!({ reason: "startup" }, ctx);
+
+  assert.deepEqual(selectedModel, { provider: "openai-codex", id: "gpt-5.6-sol" });
+  assert.equal(thinking, "xhigh");
+  assert.deepEqual(activeTools, ["read", "find", "grep", "ls", "mode_switch"]);
+});
+
 test("mode_switch remains registered without config and reports expected paths", async () => {
   const root = join(tmpdir(), `pi-mode-switch-empty-${process.pid}-${Date.now()}`);
   const handlers = new Map<string, Function>();
@@ -370,7 +419,11 @@ test("mode_switch remains registered without config and reports expected paths",
     ui: { notify: () => undefined, setStatus: () => undefined },
   } as unknown as ExtensionContext;
 
-  createModeSwitchExtension({ getAgentDirectory: () => join(root, "agent"), report: () => undefined })(pi);
+  createModeSwitchExtension({
+    getAgentDirectory: () => join(root, "agent"),
+    builtinConfigPath: join(root, "missing-modes.yaml"),
+    report: () => undefined,
+  })(pi);
   await handlers.get("session_start")!({ reason: "startup" }, ctx);
   assert.ok(activeTools.includes("mode_switch"));
   await assert.rejects(

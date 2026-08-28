@@ -194,6 +194,66 @@ function missingFile(path: string): NodeJS.ErrnoException {
   return Object.assign(new Error(`missing ${path}`), { code: "ENOENT" });
 }
 
+test("mergeModeConfigs layers built-in, global, and project configs", () => {
+  const builtin = parseModeConfig(
+    `
+version: 1
+defaultMode: builtin
+modes:
+  builtin:
+    model: provider/builtin
+    tools: [read]
+    skills: []
+  shared:
+    model: provider/builtin-shared
+    tools: [read]
+    skills: []
+`,
+    "/package/modes.yaml",
+  );
+  const global = parseModeConfig(
+    `
+version: 1
+defaultMode: global
+modes:
+  global:
+    model: provider/global
+    tools: [read]
+    skills: []
+  shared:
+    model: provider/global-shared
+    tools: [read, grep]
+    skills: []
+`,
+    "/agent/modes.yaml",
+  );
+  const project = parseModeConfig(
+    `
+version: 1
+defaultMode: project
+modes:
+  project:
+    model: provider/project
+    tools: [read]
+    skills: []
+  shared:
+    model: provider/project-shared
+    tools: [read, edit]
+    skills: []
+`,
+    "/repo/.pi/modes.yaml",
+  );
+
+  const merged = mergeModeConfigs(global, project, builtin);
+
+  assert.equal(merged.defaultMode, "project");
+  assert.equal(merged.modes.builtin.model, "provider/builtin");
+  assert.equal(merged.modes.global.model, "provider/global");
+  assert.equal(merged.modes.shared.model, "provider/project-shared");
+  assert.equal(merged.modes.project.model, "provider/project");
+  assert.deepEqual(merged.sourcePaths, ["/package/modes.yaml", "/agent/modes.yaml", "/repo/.pi/modes.yaml"]);
+});
+
 test("mergeModeConfigs keeps the replacement mode's triggerSkills", () => {
   const global = parseModeConfig(
     GLOBAL.replace("    model: anthropic/old-code", "    triggerSkills: [old-code-skill]\n    model: anthropic/old-code"),
@@ -291,6 +351,12 @@ test("loadModeConfig ignores an invalid project and retains global config", asyn
   assert.ok(loaded.diagnostics.some((diagnostic) => diagnostic.message.includes("defaultMode \"absent\" does not name a configured mode")));
 });
 
+test("bundled modes.yaml is copied from the project mode configuration", async () => {
+  const bundledPath = fileURLToPath(new URL("../modes.yaml", import.meta.url));
+  const projectPath = fileURLToPath(new URL("../.pi/modes.yaml", import.meta.url));
+  assert.equal(await readFile(bundledPath, "utf8"), await readFile(projectPath, "utf8"));
+});
+
 test("modes.example.yaml stays valid", async () => {
   const path = fileURLToPath(new URL("../modes.example.yaml", import.meta.url));
   const parsed = parseModeConfig(await readFile(path, "utf8"), path);
@@ -301,6 +367,23 @@ test("modes.example.yaml stays valid", async () => {
     "test-driven-development",
     "verification-before-completion",
   ]);
+});
+
+test("loadModeConfig includes the built-in config as its base", async () => {
+  const builtinPath = "/package/modes.yaml";
+  const loaded = await loadModeConfig({
+    cwd: "/repo",
+    agentDir: "/agent",
+    configDirName: ".pi",
+    projectTrusted: false,
+    builtinPath,
+    readText: async (path) => {
+      if (path === builtinPath) return "version: 1\ndefaultMode: builtin\nmodes:\n  builtin:\n    model: provider/builtin\n    tools: [read]\n    skills: []\n";
+      throw missingFile(path);
+    },
+  });
+  assert.equal(loaded.config?.defaultMode, "builtin");
+  assert.equal(loaded.config?.modes.builtin.model, "provider/builtin");
 });
 
 test("loadModeConfig reports both paths when neither file exists", async () => {

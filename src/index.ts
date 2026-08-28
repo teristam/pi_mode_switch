@@ -10,18 +10,21 @@ import {
   type Skill,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { fileURLToPath } from "node:url";
 import { loadModeConfig } from "./config.ts";
 import { MODE_SWITCH_TOOL, ModeController, type ModeRuntime } from "./mode-controller.ts";
 import { openModeEditor, writeModeConfigFile } from "./mode-editor.ts";
 import { SkillContextBuilder } from "./skills.ts";
 import type { AppliedMode, LoadedModeConfig, ModeSwitchState, ThinkingLevel } from "./types.ts";
 
+const BUILTIN_CONFIG_PATH = fileURLToPath(new URL("../modes.yaml", import.meta.url));
 const STATE_TYPE = "mode-switch-state";
 const CONTEXT_TYPE = "mode-switch-context";
 
 export interface ModeSwitchExtensionDependencies {
   getAgentDirectory?: () => string;
   configDirName?: string;
+  builtinConfigPath?: string;
   report?: (message: string) => void;
 }
 
@@ -244,6 +247,7 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
         agentDir: (dependencies.getAgentDirectory ?? getAgentDir)(),
         configDirName: dependencies.configDirName ?? CONFIG_DIR_NAME,
         projectTrusted: ctx.isProjectTrusted(),
+        builtinPath: dependencies.builtinConfigPath ?? BUILTIN_CONFIG_PATH,
       });
       for (const diagnostic of loaded.diagnostics) notify(ctx, diagnostic.message);
 

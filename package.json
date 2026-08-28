@@ -26,7 +26,8 @@
   "files": [
     "src",
     "README.md",
-    "modes.example.yaml"
+    "modes.example.yaml",
+    "modes.yaml"
   ],
   "scripts": {
     "test": "tsx --test test/**/*.test.ts",
