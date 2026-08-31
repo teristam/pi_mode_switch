@@ -351,10 +351,25 @@ test("loadModeConfig ignores an invalid project and retains global config", asyn
   assert.ok(loaded.diagnostics.some((diagnostic) => diagnostic.message.includes("defaultMode \"absent\" does not name a configured mode")));
 });
 
-test("bundled modes.yaml is copied from the project mode configuration", async () => {
+test("bundled modes.yaml is used when user configs are absent", async () => {
   const bundledPath = fileURLToPath(new URL("../modes.yaml", import.meta.url));
-  const projectPath = fileURLToPath(new URL("../.pi/modes.yaml", import.meta.url));
-  assert.equal(await readFile(bundledPath, "utf8"), await readFile(projectPath, "utf8"));
+  const loaded = await loadModeConfig({
+    cwd: "/repo",
+    agentDir: "/agent",
+    configDirName: ".pi",
+    projectTrusted: true,
+    builtinPath: bundledPath,
+    readText: async (path) => {
+      if (path === bundledPath) return readFile(path, "utf8");
+      throw missingFile(path);
+    },
+  });
+
+  assert.ok(loaded.config);
+  assert.equal(loaded.config.defaultMode, "plan");
+  assert.deepEqual(Object.keys(loaded.config.modes), ["plan", "code"]);
+  assert.deepEqual(loaded.config.sourcePaths, [bundledPath]);
+  assert.deepEqual(loaded.diagnostics, []);
 });
 
 test("modes.example.yaml stays valid", async () => {
