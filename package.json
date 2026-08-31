@@ -1,6 +1,6 @@
 {
   "name": "pi-mode-switch",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "YAML-defined model, tool, and skill modes for pi",
   "type": "module",
   "keywords": [
