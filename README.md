@@ -96,11 +96,10 @@ To publish a new version:
 
 1. Update `version` in `package.json` and commit the change.
 2. Push the commit to `master`.
-3. On GitHub, choose **Releases → Draft a new release**.
-4. Create a tag named `v<version>`—for example, `v0.1.1` for package version `0.1.1`.
-5. Add release notes and select **Publish release**.
+3. Create a matching tag—for example, `git tag v0.1.1`.
+4. Push the tag: `git push origin v0.1.1`.
 
-Publishing the GitHub Release starts `.github/workflows/publish.yml`. The workflow checks out that tag, runs tests and typecheck, verifies the tag matches `package.json`, and publishes the package to npm.
+Pushing the tag starts `.github/workflows/publish.yml`. The workflow checks out that tag, runs tests and typecheck, verifies the tag matches `package.json`, and publishes the package to npm. Creating a GitHub Release is optional and does not trigger a separate publish.
 
 Before the first automated release, configure npm Trusted Publishing for `pi-mode-switch` with:
 
@@ -109,4 +108,4 @@ Before the first automated release, configure npm Trusted Publishing for `pi-mod
 - Workflow file: `publish.yml`
 - Environment: none
 
-Pushing a tag without publishing a GitHub Release does not publish to npm. npm versions are immutable, so each release needs a new package version.
+npm versions are immutable, so each release needs a new package version.
