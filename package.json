@@ -26,7 +26,6 @@
   "files": [
     "src",
     "README.md",
-    "modes.example.yaml",
     "modes.yaml"
   ],
   "scripts": {

@@ -185,15 +185,14 @@ export function parseModeConfig(source: string, filePath: string): ModeConfigSou
 export function mergeModeConfigs(
   globalConfig: ModeConfigSource | undefined,
   projectConfig: ModeConfigSource | undefined,
-  builtinConfig?: ModeConfigSource,
 ): ModeConfig {
-  const sources = [builtinConfig, globalConfig, projectConfig].filter(
+  const sources = [globalConfig, projectConfig].filter(
     (config): config is ModeConfigSource => Boolean(config),
   );
   const modes: Record<string, ModeDefinition> = {};
   for (const source of sources) Object.assign(modes, source.modes);
 
-  const defaultMode = projectConfig?.defaultMode ?? globalConfig?.defaultMode ?? builtinConfig?.defaultMode;
+  const defaultMode = projectConfig?.defaultMode ?? globalConfig?.defaultMode;
   const sourcePaths = sources.map((source) => source.sourcePath);
   const diagnosticPath = sourcePaths.at(-1) ?? "modes.yaml";
   validateTriggerAssignments(modes, diagnosticPath);
@@ -211,7 +210,6 @@ export interface LoadModeConfigOptions {
   agentDir: string;
   configDirName: string;
   projectTrusted: boolean;
-  builtinPath?: string;
   readText?: (path: string) => Promise<string>;
 }
 
@@ -234,57 +232,43 @@ export async function loadModeConfig(options: LoadModeConfigOptions): Promise<Lo
   const projectPath = join(options.cwd, options.configDirName, "modes.yaml");
   const diagnostics: ConfigDiagnostic[] = [];
   const readText = options.readText ?? ((path: string) => readFile(path, "utf8"));
-  const builtinConfig = options.builtinPath
-    ? await readOptionalConfig(options.builtinPath, readText, diagnostics)
-    : undefined;
   const globalConfig = await readOptionalConfig(globalPath, readText, diagnostics);
   const projectConfig = options.projectTrusted
     ? await readOptionalConfig(projectPath, readText, diagnostics)
     : undefined;
 
-  if (!builtinConfig && !globalConfig && !projectConfig) return { diagnostics, globalPath, projectPath };
+  if (!globalConfig && !projectConfig) return { diagnostics, globalPath, projectPath };
 
   try {
     return {
-      config: mergeModeConfigs(globalConfig, projectConfig, builtinConfig),
+      config: mergeModeConfigs(globalConfig, projectConfig),
       diagnostics,
       globalPath,
       projectPath,
     };
   } catch (error) {
     diagnostics.push({
-      path: projectConfig?.sourcePath ?? globalConfig?.sourcePath ?? builtinConfig?.sourcePath ?? projectPath,
+      path: projectConfig?.sourcePath ?? globalConfig?.sourcePath ?? projectPath,
       message: error instanceof Error ? error.message : "invalid merged mode config",
     });
   }
 
-  const fallbacks: Array<[
-    ModeConfigSource | undefined,
-    ModeConfigSource | undefined,
-    ModeConfigSource | undefined,
-  ]> = [
-    [globalConfig, undefined, builtinConfig],
-    [undefined, projectConfig, builtinConfig],
-    [undefined, undefined, builtinConfig],
-    [globalConfig, undefined, undefined],
-    [undefined, projectConfig, undefined],
+  const fallbacks: Array<[ModeConfigSource | undefined, ModeConfigSource | undefined]> = [
+    [globalConfig, undefined],
+    [undefined, projectConfig],
   ];
-  for (const [globalFallback, projectFallback, builtinFallback] of fallbacks) {
-    if (!globalFallback && !projectFallback && !builtinFallback) continue;
+  for (const [globalFallback, projectFallback] of fallbacks) {
+    if (!globalFallback && !projectFallback) continue;
     try {
       return {
-        config: mergeModeConfigs(globalFallback, projectFallback, builtinFallback),
+        config: mergeModeConfigs(globalFallback, projectFallback),
         diagnostics,
         globalPath,
         projectPath,
       };
     } catch (error) {
       diagnostics.push({
-        path:
-          projectFallback?.sourcePath ??
-          globalFallback?.sourcePath ??
-          builtinFallback?.sourcePath ??
-          projectPath,
+        path: projectFallback?.sourcePath ?? globalFallback?.sourcePath ?? projectPath,
         message: error instanceof Error ? error.message : "invalid fallback mode config",
       });
     }

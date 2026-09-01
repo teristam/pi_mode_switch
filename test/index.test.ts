@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -346,10 +346,21 @@ test("unknown configured trigger skills warn once after discovery", async () => 
   assert.equal(harness.reports.filter((message) => message.includes("missing-trigger")).length, 1);
 });
 
-test("activates the bundled default mode when no user config exists", async () => {
-  const root = join(tmpdir(), `pi-mode-switch-builtin-${process.pid}-${Date.now()}`);
+test("copies bundled defaults to the global config when it is missing", async () => {
+  const root = join(tmpdir(), `pi-mode-switch-seed-${process.pid}-${Date.now()}`);
   const agentDir = join(root, "agent");
-  await mkdir(agentDir, { recursive: true });
+  const bundledPath = join(root, "bundle", "modes.yaml");
+  const bundled = `
+version: 1
+defaultMode: plan
+modes:
+  plan:
+    model: provider/plan-model
+    tools: [read]
+    skills: []
+`;
+  await mkdir(dirname(bundledPath), { recursive: true });
+  await writeFile(bundledPath, bundled, "utf8");
   const handlers = new Map<string, Function>();
   const tools = new Map<string, any>();
   let activeTools = ["read"];
@@ -387,12 +398,13 @@ test("activates the bundled default mode when no user config exists", async () =
     ui: { notify: () => undefined, setStatus: () => undefined },
   } as unknown as ExtensionContext;
 
-  createModeSwitchExtension({ getAgentDirectory: () => agentDir })(pi);
+  createModeSwitchExtension({ getAgentDirectory: () => agentDir, bundledConfigPath: bundledPath })(pi);
   await handlers.get("session_start")!({ reason: "startup" }, ctx);
 
-  assert.deepEqual(selectedModel, { provider: "openai-codex", id: "gpt-5.6-sol" });
-  assert.equal(thinking, "xhigh");
-  assert.deepEqual(activeTools, ["read", "find", "grep", "ls", "mode_switch"]);
+  assert.equal(await readFile(join(agentDir, "modes.yaml"), "utf8"), bundled);
+  assert.deepEqual(selectedModel, { provider: "provider", id: "plan-model" });
+  assert.equal(thinking, "off");
+  assert.deepEqual(activeTools, ["read", "mode_switch"]);
 });
 
 test("mode_switch remains registered without config and reports expected paths", async () => {
@@ -421,7 +433,7 @@ test("mode_switch remains registered without config and reports expected paths",
 
   createModeSwitchExtension({
     getAgentDirectory: () => join(root, "agent"),
-    builtinConfigPath: join(root, "missing-modes.yaml"),
+    bundledConfigPath: join(root, "missing-modes.yaml"),
     report: () => undefined,
   })(pi);
   await handlers.get("session_start")!({ reason: "startup" }, ctx);

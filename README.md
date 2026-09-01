@@ -27,12 +27,9 @@ pi install .
 
 ## Configure
 
-Copy `modes.example.yaml` to either location:
+On the first session after installation, the extension copies its bundled defaults to `~/.pi/agent/modes.yaml` if that file does not already exist. The global file is user-owned: it is never overwritten, so edit it directly to customize the defaults. If it is deleted, it is recreated on the next session.
 
-- Global: `~/.pi/agent/modes.yaml`
-- Project: `<project>/.pi/modes.yaml`
-
-Project configuration is read only after pi trusts the project. The installed extension starts from its bundled `modes.yaml`; global and trusted project configurations are merged on top, with later definitions replacing same-named modes. A project `defaultMode` overrides the global and bundled values.
+A trusted project's `<project>/.pi/modes.yaml` is optional and is merged on top of the global file, with later definitions replacing same-named modes. A project `defaultMode` overrides the global value. The bundled `modes.yaml` is used only to seed the global file and is never loaded directly at runtime.
 
 Every mode requires `model` and either `tools` or `excludeTools`, plus either `skills` or `excludeSkills`. `triggerSkills` is optional and maps explicit or agent-loaded skills to that mode. A skill can trigger only one mode. Use `provider/model-id`; the provider is the text before the first slash. `thinkingLevel` and `instructions` are optional. Allow and deny fields may coexist; deny fields take precedence and automatically include newly discovered resources unless banned.
 

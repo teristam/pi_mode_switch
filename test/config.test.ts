@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import { ConfigValidationError, loadModeConfig, mergeModeConfigs, parseModeConfig } from "../src/config.ts";
 
 const VALID = `
@@ -194,23 +192,7 @@ function missingFile(path: string): NodeJS.ErrnoException {
   return Object.assign(new Error(`missing ${path}`), { code: "ENOENT" });
 }
 
-test("mergeModeConfigs layers built-in, global, and project configs", () => {
-  const builtin = parseModeConfig(
-    `
-version: 1
-defaultMode: builtin
-modes:
-  builtin:
-    model: provider/builtin
-    tools: [read]
-    skills: []
-  shared:
-    model: provider/builtin-shared
-    tools: [read]
-    skills: []
-`,
-    "/package/modes.yaml",
-  );
+test("mergeModeConfigs layers global and project configs", () => {
   const global = parseModeConfig(
     `
 version: 1
@@ -244,14 +226,13 @@ modes:
     "/repo/.pi/modes.yaml",
   );
 
-  const merged = mergeModeConfigs(global, project, builtin);
+  const merged = mergeModeConfigs(global, project);
 
   assert.equal(merged.defaultMode, "project");
-  assert.equal(merged.modes.builtin.model, "provider/builtin");
   assert.equal(merged.modes.global.model, "provider/global");
   assert.equal(merged.modes.shared.model, "provider/project-shared");
   assert.equal(merged.modes.project.model, "provider/project");
-  assert.deepEqual(merged.sourcePaths, ["/package/modes.yaml", "/agent/modes.yaml", "/repo/.pi/modes.yaml"]);
+  assert.deepEqual(merged.sourcePaths, ["/agent/modes.yaml", "/repo/.pi/modes.yaml"]);
 });
 
 test("mergeModeConfigs keeps the replacement mode's triggerSkills", () => {
@@ -349,56 +330,6 @@ test("loadModeConfig ignores an invalid project and retains global config", asyn
   });
   assert.equal(loaded.config?.defaultMode, "plan");
   assert.ok(loaded.diagnostics.some((diagnostic) => diagnostic.message.includes("defaultMode \"absent\" does not name a configured mode")));
-});
-
-test("bundled modes.yaml is used when user configs are absent", async () => {
-  const bundledPath = fileURLToPath(new URL("../modes.yaml", import.meta.url));
-  const loaded = await loadModeConfig({
-    cwd: "/repo",
-    agentDir: "/agent",
-    configDirName: ".pi",
-    projectTrusted: true,
-    builtinPath: bundledPath,
-    readText: async (path) => {
-      if (path === bundledPath) return readFile(path, "utf8");
-      throw missingFile(path);
-    },
-  });
-
-  assert.ok(loaded.config);
-  assert.equal(loaded.config.defaultMode, "plan");
-  assert.deepEqual(Object.keys(loaded.config.modes), ["plan", "code"]);
-  assert.deepEqual(loaded.config.sourcePaths, [bundledPath]);
-  assert.deepEqual(loaded.diagnostics, []);
-});
-
-test("modes.example.yaml stays valid", async () => {
-  const path = fileURLToPath(new URL("../modes.example.yaml", import.meta.url));
-  const parsed = parseModeConfig(await readFile(path, "utf8"), path);
-  assert.equal(parsed.defaultMode, "plan");
-  assert.deepEqual(Object.keys(parsed.modes), ["plan", "code"]);
-  assert.deepEqual(parsed.modes.plan.triggerSkills, ["brainstorming", "writing-plans"]);
-  assert.deepEqual(parsed.modes.code.triggerSkills, [
-    "test-driven-development",
-    "verification-before-completion",
-  ]);
-});
-
-test("loadModeConfig includes the built-in config as its base", async () => {
-  const builtinPath = "/package/modes.yaml";
-  const loaded = await loadModeConfig({
-    cwd: "/repo",
-    agentDir: "/agent",
-    configDirName: ".pi",
-    projectTrusted: false,
-    builtinPath,
-    readText: async (path) => {
-      if (path === builtinPath) return "version: 1\ndefaultMode: builtin\nmodes:\n  builtin:\n    model: provider/builtin\n    tools: [read]\n    skills: []\n";
-      throw missingFile(path);
-    },
-  });
-  assert.equal(loaded.config?.defaultMode, "builtin");
-  assert.equal(loaded.config?.modes.builtin.model, "provider/builtin");
 });
 
 test("loadModeConfig reports both paths when neither file exists", async () => {
