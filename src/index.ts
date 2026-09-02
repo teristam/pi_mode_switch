@@ -10,6 +10,7 @@ import {
   type Skill,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { Key } from "@earendil-works/pi-tui";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadModeConfig } from "./config.ts";
@@ -193,6 +194,26 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
         },
       });
     }
+
+    pi.registerShortcut(Key.ctrl("m"), {
+      description: "Cycle through configured agent modes",
+      handler: async (ctx) => {
+        const names = Object.keys(loaded?.config?.modes ?? {});
+        if (names.length === 0) {
+          notify(ctx, unavailableMessage(), "error");
+          return;
+        }
+
+        const currentIndex = active ? names.indexOf(active.name) : -1;
+        const next = names[(currentIndex + 1) % names.length];
+        try {
+          await activate(next, ctx, true);
+          notify(ctx, `Mode "${next}" activated`, "info");
+        } catch (error) {
+          notify(ctx, errorMessage(error), "error");
+        }
+      },
+    });
 
     pi.registerCommand("mode", {
       description: "Switch the active YAML-defined agent mode",

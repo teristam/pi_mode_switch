@@ -47,6 +47,7 @@ async function triggerHarness(options: { failCode?: boolean } = {}) {
   const pi = {
     on: (name: string, handler: Function) => handlers.set(name, handler),
     registerCommand: () => undefined,
+    registerShortcut: () => undefined,
     registerTool: () => undefined,
     getCommands: () => [
       { name: "skill:brainstorming", source: "skill", sourceInfo: {} },
@@ -109,6 +110,7 @@ test("command and tool share switching, persistence, status, and schema", async 
   const { root, agentDir } = await fixture();
   const handlers = new Map<string, Function>();
   const commands = new Map<string, any>();
+  const shortcuts = new Map<string, any>();
   const tools = new Map<string, any>();
   const entries: Array<{ customType: string; data: unknown }> = [];
   const statuses: Array<string | undefined> = [];
@@ -119,6 +121,7 @@ test("command and tool share switching, persistence, status, and schema", async 
   const pi = {
     on: (name: string, handler: Function) => handlers.set(name, handler),
     registerCommand: (name: string, command: unknown) => commands.set(name, command),
+    registerShortcut: (shortcut: string, options: unknown) => shortcuts.set(shortcut, options),
     registerTool: (tool: any) => {
       tools.set(tool.name, tool);
     },
@@ -155,6 +158,16 @@ test("command and tool share switching, persistence, status, and schema", async 
   assert.equal(statuses.at(-1), "mode:plan");
   assert.equal(entries.length, 0);
 
+  const cycleShortcut = shortcuts.get("ctrl+m");
+  assert.ok(cycleShortcut);
+  await cycleShortcut.handler(ctx);
+  assert.deepEqual(activeTools, ["read", "edit", "mode_switch"]);
+  assert.deepEqual(entries.at(-1), { customType: "mode-switch-state", data: { mode: "code" } });
+
+  await cycleShortcut.handler(ctx);
+  assert.deepEqual(activeTools, ["read", "mode_switch"]);
+  assert.deepEqual(entries.at(-1), { customType: "mode-switch-state", data: { mode: "plan" } });
+
   await commands.get("mode").handler("code", ctx);
   assert.deepEqual(activeTools, ["read", "edit", "mode_switch"]);
   assert.deepEqual(entries.at(-1), { customType: "mode-switch-state", data: { mode: "code" } });
@@ -168,12 +181,69 @@ test("command and tool share switching, persistence, status, and schema", async 
   branch = [{ type: "custom", customType: "mode-switch-state", data: { mode: "code" } }];
   await handlers.get("session_tree")!({}, ctx);
   assert.deepEqual(activeTools, ["read", "edit", "mode_switch"]);
-  assert.equal(entries.length, 2);
+  assert.equal(entries.length, 4);
 
   branch = [];
   await handlers.get("session_tree")!({}, ctx);
   assert.deepEqual(activeTools, ["read", "mode_switch"]);
-  assert.equal(entries.length, 2);
+  assert.equal(entries.length, 4);
+});
+
+test("bare /mode opens settings instead of cycling or persisting a switch", async () => {
+  const { root, agentDir } = await fixture();
+  const handlers = new Map<string, Function>();
+  const customPages: string[] = [];
+  const commands = new Map<string, any>();
+  const entries: Array<{ customType: string; data: unknown }> = [];
+
+  const pi = {
+    on: (name: string, handler: Function) => handlers.set(name, handler),
+    registerCommand: (name: string, command: unknown) => commands.set(name, command),
+    registerShortcut: () => undefined,
+    registerTool: () => undefined,
+    getCommands: () => [],
+    getAllTools: () => ["read", "mode_switch"].map((name) => ({ name })),
+    getActiveTools: () => ["read", "mode_switch"],
+    setActiveTools: () => undefined,
+    setModel: async () => true,
+    setThinkingLevel: () => undefined,
+    getThinkingLevel: () => "off",
+    appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
+  } as unknown as ExtensionAPI;
+
+  const ctx = {
+    cwd: root,
+    hasUI: true,
+    mode: "tui",
+    isProjectTrusted: () => false,
+    modelRegistry: { find: (provider: string, id: string) => ({ provider, id }) },
+    sessionManager: { getBranch: () => [] },
+    ui: {
+      notify: () => undefined,
+      select: async () => undefined,
+      setStatus: () => undefined,
+      custom: async (factory: any) => {
+        let result: unknown;
+        const component = factory(
+          { requestRender: () => undefined },
+          { fg: (_color: string, text: string) => text },
+          {},
+          (value: unknown) => { result = value; },
+        );
+        customPages.push(component.render(120).join("\n"));
+        if (customPages.length === 1) component.handleInput("\r");
+        else result = null;
+        return result;
+      },
+    },
+  } as unknown as ExtensionContext;
+
+  createModeSwitchExtension({ getAgentDirectory: () => agentDir })(pi);
+  await handlers.get("session_start")!({ reason: "startup" }, ctx);
+  await commands.get("mode").handler("   ", ctx);
+
+  assert.ok(customPages.some((page) => page.includes("Configure mode: plan")));
+  assert.equal(entries.length, 0);
 });
 
 test("context uses the mode selected by the immediately preceding tool call", async () => {
@@ -185,6 +255,7 @@ test("context uses the mode selected by the immediately preceding tool call", as
   const pi = {
     on: (name: string, handler: Function) => handlers.set(name, handler),
     registerCommand: () => undefined,
+    registerShortcut: () => undefined,
     registerTool: (tool: any) => tools.set(tool.name, tool),
     getAllTools: () => ["read", "edit", ...tools.keys()].map((name) => ({ name })),
     getActiveTools: () => activeTools,
@@ -370,6 +441,7 @@ modes:
   const pi = {
     on: (name: string, handler: Function) => handlers.set(name, handler),
     registerCommand: () => undefined,
+    registerShortcut: () => undefined,
     registerTool: (tool: any) => tools.set(tool.name, tool),
     getCommands: () => [],
     getAllTools: () => ["read", "edit", "find", "grep", "ls", ...tools.keys()].map((name) => ({ name })),
@@ -415,6 +487,7 @@ test("mode_switch remains registered without config and reports expected paths",
   const pi = {
     on: (name: string, handler: Function) => handlers.set(name, handler),
     registerCommand: () => undefined,
+    registerShortcut: () => undefined,
     registerTool: (tool: any) => tools.set(tool.name, tool),
     getAllTools: () => ["read", ...tools.keys()].map((name) => ({ name })),
     getActiveTools: () => activeTools,
