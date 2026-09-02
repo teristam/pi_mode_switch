@@ -1,8 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { stringify } from "yaml";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import {
+  DynamicBorder,
+  ModelSelectorComponent,
+} from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type {
   Component,
   EditorTheme,
@@ -108,6 +111,46 @@ const EDITOR_THEME: EditorTheme = {
   borderColor: (text) => text,
   selectList: SELECT_LIST_THEME,
 };
+
+type ModelSelectorRegistry = Pick<
+  ExtensionContext["modelRegistry"],
+  "getAvailable" | "find" | "refresh" | "getError"
+>;
+
+export function createModelSelectorRuntime(registry: ModelSelectorRegistry): ModelRuntime {
+  // ModelSelectorComponent only needs these runtime methods, but its public constructor accepts ModelRuntime.
+  return {
+    getAvailableSnapshot: () => registry.getAvailable(),
+    getModel: (provider: string, modelId: string) => registry.find(provider, modelId),
+    refresh: (options: Parameters<ModelRuntime["refresh"]>[0]) => registry.refresh(options),
+    getError: () => registry.getError(),
+  } as unknown as ModelRuntime;
+}
+
+export function modelReference(model: { provider: string; id: string }): string {
+  return `${model.provider}/${model.id}`;
+}
+
+export function createModeModelSelector(
+  tui: TUI,
+  currentValue: string,
+  ctx: Pick<ExtensionContext, "modelRegistry" | "scopedModels">,
+  done: (value?: string) => void,
+): ModelSelectorComponent {
+  const separator = currentValue.indexOf("/");
+  const currentModel = separator > 0
+    ? ctx.modelRegistry.find(currentValue.slice(0, separator), currentValue.slice(separator + 1))
+    : undefined;
+
+  return new ModelSelectorComponent(
+    tui,
+    currentModel,
+    createModelSelectorRuntime(ctx.modelRegistry),
+    ctx.scopedModels,
+    (model) => done(modelReference(model)),
+    () => done(),
+  );
+}
 
 function displayList(values: string[]): string {
   return values.length > 0 ? values.join(", ") : "(none)";
@@ -361,7 +404,7 @@ function modeSettings(
         description: "Provider/model-id, for example openai-codex/gpt-5.6-sol",
         currentValue: working.model,
         submenu: (currentValue, submenuDone) =>
-          new TextValueSubmenu(tui, theme, "Model", "Enter provider/model-id.", currentValue, submenuDone),
+          createModeModelSelector(tui, currentValue, ctx, submenuDone),
       },
       {
         id: "thinkingLevel",

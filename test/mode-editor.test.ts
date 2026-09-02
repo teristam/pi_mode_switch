@@ -1,8 +1,73 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { join } from "node:path";
-import { getModeConfigTargets, serializeModeConfig, type ModeConfigTarget } from "../src/mode-editor.ts";
+import type { Model, ModelsRefreshResult } from "@earendil-works/pi-ai";
+import { initTheme } from "@earendil-works/pi-coding-agent";
+import type { TUI } from "@earendil-works/pi-tui";
+import { createModelSelectorRuntime, getModeConfigTargets, modelReference, serializeModeConfig, type ModeConfigTarget } from "../src/mode-editor.ts";
+import * as modeEditor from "../src/mode-editor.ts";
 import { parseModeConfig } from "../src/config.ts";
+
+type ModelSelectorFactory = (
+  tui: TUI,
+  currentValue: string,
+  ctx: { modelRegistry: Parameters<typeof createModelSelectorRuntime>[0]; scopedModels: [] },
+  done: (value?: string) => void,
+) => { dispose(): void };
+
+test("mode editor adapts the registry for the built-in model selector", async () => {
+  const model = { provider: "openai", id: "gpt-5", name: "GPT-5" } as Model<any>;
+  const refreshResult: ModelsRefreshResult = { aborted: false, errors: new Map() };
+  let refreshOptions: unknown;
+  const registry: Parameters<typeof createModelSelectorRuntime>[0] = {
+    getAvailable: () => [model],
+    find: (provider: string, modelId: string) => provider === model.provider && modelId === model.id ? model : undefined,
+    refresh: async (options) => {
+      refreshOptions = options;
+      return refreshResult;
+    },
+    getError: () => "catalog unavailable",
+  };
+
+  const runtime = createModelSelectorRuntime(registry);
+
+  assert.deepEqual(runtime.getAvailableSnapshot(), [model]);
+  assert.equal(runtime.getModel("openai", "gpt-5"), model);
+  assert.equal(runtime.getModel("openai", "missing"), undefined);
+  assert.equal(runtime.getError(), "catalog unavailable");
+  assert.deepEqual(await runtime.refresh({ signal: AbortSignal.timeout(1) }), refreshResult);
+  assert.ok(refreshOptions);
+});
+
+test("mode editor constructs the model selector with the runtime in the current API position", () => {
+  initTheme();
+  const createModeModelSelector = (modeEditor as typeof modeEditor & {
+    createModeModelSelector?: ModelSelectorFactory;
+  }).createModeModelSelector;
+  assert.equal(typeof createModeModelSelector, "function");
+  if (!createModeModelSelector) return;
+
+  const model = { provider: "openai", id: "gpt-5", name: "GPT-5" } as Model<any>;
+  const registry: Parameters<typeof createModelSelectorRuntime>[0] = {
+    getAvailable: () => [model],
+    find: (provider, modelId) => provider === model.provider && modelId === model.id ? model : undefined,
+    refresh: async () => ({ aborted: false, errors: new Map() }),
+    getError: () => undefined,
+  };
+  const selector = createModeModelSelector(
+    { requestRender() {} } as TUI,
+    "openai/gpt-5",
+    { modelRegistry: registry, scopedModels: [] },
+    () => {},
+  );
+
+  assert.ok(selector);
+  selector.dispose();
+});
+
+test("mode editor formats selected model references", () => {
+  assert.equal(modelReference({ provider: "openai", id: "gpt-5" }), "openai/gpt-5");
+});
 
 test("mode editor exposes global and trusted project targets", () => {
   const targets = getModeConfigTargets("/home/user/.pi/agent", "/repo", ".pi", true);
