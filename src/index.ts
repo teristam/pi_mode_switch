@@ -195,7 +195,7 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
       });
     }
 
-    pi.registerShortcut(Key.ctrl("m"), {
+    pi.registerShortcut(Key.ctrlAlt("m"), {
       description: "Cycle through configured agent modes",
       handler: async (ctx) => {
         const names = Object.keys(loaded?.config?.modes ?? {});

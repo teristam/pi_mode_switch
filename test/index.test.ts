@@ -4,6 +4,7 @@ import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Key, matchesKey } from "@earendil-works/pi-tui";
 import { createModeSwitchExtension } from "../src/index.ts";
 
 async function fixture() {
@@ -158,7 +159,7 @@ test("command and tool share switching, persistence, status, and schema", async 
   assert.equal(statuses.at(-1), "mode:plan");
   assert.equal(entries.length, 0);
 
-  const cycleShortcut = shortcuts.get("ctrl+m");
+  const cycleShortcut = shortcuts.get("ctrl+alt+m");
   assert.ok(cycleShortcut);
   await cycleShortcut.handler(ctx);
   assert.deepEqual(activeTools, ["read", "edit", "mode_switch"]);
@@ -187,6 +188,12 @@ test("command and tool share switching, persistence, status, and schema", async 
   await handlers.get("session_tree")!({}, ctx);
   assert.deepEqual(activeTools, ["read", "mode_switch"]);
   assert.equal(entries.length, 4);
+});
+
+test("mode cycle shortcut does not consume Enter", () => {
+  assert.equal(matchesKey("\r", Key.ctrl("m")), true);
+  assert.equal(matchesKey("\r", Key.ctrlAlt("m")), false);
+  assert.equal(matchesKey("\x1b\r", Key.ctrlAlt("m")), true);
 });
 
 test("bare /mode opens settings instead of cycling or persisting a switch", async () => {

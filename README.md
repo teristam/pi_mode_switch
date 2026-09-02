@@ -56,7 +56,7 @@ After editing YAML, run `/reload`.
 - `/mode` opens the TUI mode editor. Choose the global or trusted project `modes.yaml`, then edit an existing mode or create a new one.
 - The editor supports model, thinking level, instructions, separate `Allowed tools`, `Banned tools`, `Allowed skills`, `Banned skills`, and `Trigger skills` entries. Saving validates the selected file and reloads the extension automatically.
 - `/mode code` switches directly.
-- `Ctrl+M` cycles through configured modes in YAML order.
+- `Ctrl+Alt+M` cycles through configured modes in YAML order.
 - The agent can call `mode_switch({ mode: "code" })`.
 
 New sessions use `defaultMode`. Explicit switches are stored as branch-aware custom session entries, so resume and tree navigation restore the branch's mode.
