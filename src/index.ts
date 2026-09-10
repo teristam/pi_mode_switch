@@ -49,6 +49,7 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
     let loaded: LoadedModeConfig | undefined;
     let controller: ModeController<unknown> | undefined;
     let active: AppliedMode | undefined;
+    let modeEnabled = false;
     let triggerModes = new Map<string, string>();
     let currentContext: ExtensionContext | undefined;
     let toolRegistered = false;
@@ -105,12 +106,14 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
       if (!controller) throw new Error(unavailableMessage());
       const applied = await controller.apply(name);
       active = applied;
+      modeEnabled = true;
       updateStatus(ctx);
       if (persist) pi.appendEntry<ModeSwitchState>(STATE_TYPE, { mode: name });
       return applied;
     }
 
     async function activateForSkill(skillName: string, ctx: ExtensionContext): Promise<boolean> {
+      if (!modeEnabled) return false;
       const modeName = triggerModes.get(skillName);
       if (!modeName || active?.name === modeName) return false;
       await activate(modeName, ctx, true);
@@ -216,7 +219,7 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
     });
 
     pi.registerCommand("mode", {
-      description: "Switch the active YAML-defined agent mode",
+      description: "Activate a YAML-defined agent mode (defaults to the configured default mode)",
       getArgumentCompletions: (prefix) => {
         const matches = Object.entries(loaded?.config?.modes ?? {})
           .filter(([name]) => name.startsWith(prefix))
@@ -225,15 +228,12 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
       },
       handler: async (args, ctx) => {
         currentContext = ctx;
-        const name = args.trim();
-        if (!name) {
-          await editModeConfig(ctx);
-          return;
-        }
-        if (!loaded?.config) {
+        const config = loaded?.config;
+        if (!config) {
           notify(ctx, unavailableMessage(), "error");
           return;
         }
+        const name = args.trim() || config.defaultMode;
 
         try {
           await activate(name, ctx, true);
@@ -241,6 +241,14 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
         } catch (error) {
           notify(ctx, errorMessage(error), "error");
         }
+      },
+    });
+
+    pi.registerCommand("mode-settings", {
+      description: "Edit YAML-defined agent mode settings",
+      handler: async (_args, ctx) => {
+        currentContext = ctx;
+        await editModeConfig(ctx);
       },
     });
 
@@ -275,6 +283,8 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
         notify(ctx, `Could not create default mode configuration at ${join(agentDir, "modes.yaml")}: ${errorMessage(error)}`);
       }
 
+      modeEnabled = false;
+      active = undefined;
       loaded = await loadModeConfig({
         cwd: ctx.cwd,
         agentDir,
@@ -304,13 +314,11 @@ export function createModeSwitchExtension(dependencies: ModeSwitchExtensionDepen
       }
 
       registerModeTool();
-      pi.setActiveTools([...new Set([...pi.getActiveTools(), MODE_SWITCH_TOOL])]);
-      await restore(ctx);
     });
 
     pi.on("session_tree", async (_event, ctx) => {
       currentContext = ctx;
-      await restore(ctx);
+      if (modeEnabled) await restore(ctx);
     });
 
     pi.on("before_agent_start", (event, ctx) => {

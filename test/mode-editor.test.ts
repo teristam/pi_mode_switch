@@ -69,6 +69,70 @@ test("mode editor formats selected model references", () => {
   assert.equal(modelReference({ provider: "openai", id: "gpt-5" }), "openai/gpt-5");
 });
 
+test("multi-select uses Space to toggle and Enter to commit", () => {
+  const MultiSelectSubmenu = (modeEditor as typeof modeEditor & {
+    MultiSelectSubmenu?: new (...args: any[]) => {
+      render(width: number): string[];
+      handleInput(data: string): void;
+    };
+  }).MultiSelectSubmenu;
+  assert.equal(typeof MultiSelectSubmenu, "function");
+  if (!MultiSelectSubmenu) return;
+
+  const changes: string[][] = [];
+  const done: Array<string | undefined> = [];
+  const submenu = new MultiSelectSubmenu(
+    { requestRender() {} },
+    { fg: (_color: string, text: string) => text },
+    "Allowed tools",
+    "Select tools",
+    ["read", "write"],
+    [],
+    (value?: string) => done.push(value),
+    (values: string[]) => changes.push(values),
+  );
+
+  submenu.handleInput(" ");
+  assert.ok(submenu.render(120).join("\n").includes("> [x] read"));
+  assert.deepEqual(changes, []);
+
+  submenu.handleInput("\r");
+  assert.deepEqual(changes, [["read"]]);
+  assert.deepEqual(done, ["read"]);
+});
+
+test("allowed skills All selects every skill without serializing All", () => {
+  const MultiSelectSubmenu = (modeEditor as typeof modeEditor & {
+    MultiSelectSubmenu?: new (...args: any[]) => {
+      render(width: number): string[];
+      handleInput(data: string): void;
+    };
+  }).MultiSelectSubmenu;
+  assert.equal(typeof MultiSelectSubmenu, "function");
+  if (!MultiSelectSubmenu) return;
+
+  const changes: string[][] = [];
+  const done: Array<string | undefined> = [];
+  const submenu = new MultiSelectSubmenu(
+    { requestRender() {} },
+    { fg: (_color: string, text: string) => text },
+    "Allowed skills",
+    "Select skills",
+    ["alpha", "beta"],
+    [],
+    (value?: string) => done.push(value),
+    (values: string[]) => changes.push(values),
+    "All",
+  );
+
+  submenu.handleInput(" ");
+  assert.ok(submenu.render(120).join("\n").includes("> [x] All"));
+  submenu.handleInput("\r");
+
+  assert.deepEqual(changes, [["alpha", "beta"]]);
+  assert.deepEqual(done, ["alpha, beta"]);
+});
+
 test("mode editor exposes global and trusted project targets", () => {
   const targets = getModeConfigTargets("/home/user/.pi/agent", "/repo", ".pi", true);
 

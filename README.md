@@ -53,13 +53,13 @@ After editing YAML, run `/reload`.
 
 ## Switch modes
 
-- `/mode` opens the TUI mode editor. Choose the global or trusted project `modes.yaml`, then edit an existing mode or create a new one.
-- The editor supports model, thinking level, instructions, separate `Allowed tools`, `Banned tools`, `Allowed skills`, `Banned skills`, and `Trigger skills` entries. Saving validates the selected file and reloads the extension automatically.
-- `/mode code` switches directly.
+- `/mode` activates the configured `defaultMode`; `/mode code` activates a named mode.
+- `/mode-settings` opens the TUI mode editor. Choose the global or trusted project `modes.yaml`, then edit an existing mode or create a new one.
+- The editor supports model, thinking level, instructions, separate `Allowed tools`, `Banned tools`, `Allowed skills`, `Banned skills`, and `Trigger skills` entries. The allowed-skills selector includes `All`; use Space to toggle options and Enter to save and return to the settings page. Saving validates the selected file and reloads the extension automatically.
 - `Ctrl+Alt+M` cycles through configured modes in YAML order.
 - The agent can call `mode_switch({ mode: "code" })`.
 
-New sessions use `defaultMode`. Explicit switches are stored as branch-aware custom session entries, so resume and tree navigation restore the branch's mode.
+New sessions do not activate a mode automatically. Use bare `/mode` to activate `defaultMode`. Explicit switches are stored as branch-aware custom session entries; tree navigation restores the branch's mode after mode switching has been enabled in the session.
 
 Selected skills are read in full and attached as ephemeral context before every model request. Other discovered skills remain available through pi's normal skill catalogue.
 
@@ -70,7 +70,7 @@ A mode's optional `triggerSkills` list is separate from `skills` and `excludeSki
 - The user invokes `/skill:name`.
 - The agent reads the exact discovered `SKILL.md` for that skill.
 
-The switch happens before the explicit skill is expanded or the discovered skill file is read. Successful switches use the same branch-aware persistence as `/mode`; if the target is already active, no duplicate state is stored. If activation fails, the explicit command or skill-file read is blocked instead of running in the previous mode. Reads of skill reference files and assets do not trigger a switch.
+The switch happens before the explicit skill is expanded or the discovered skill file is read. Skill triggers are inactive until mode switching has been enabled in the session by a mode activation. Successful switches use the same branch-aware persistence as `/mode`; if the target is already active, no duplicate state is stored. If activation fails, the explicit command or skill-file read is blocked instead of running in the previous mode. Reads of skill reference files and assets do not trigger a switch.
 
 ## Errors
 

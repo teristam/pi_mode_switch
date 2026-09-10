@@ -40,6 +40,7 @@ modes:
 async function triggerHarness(options: { failCode?: boolean } = {}) {
   const { root, agentDir } = await fixture();
   const handlers = new Map<string, Function>();
+  const commands = new Map<string, any>();
   const entries: Array<{ customType: string; data: unknown }> = [];
   const reports: string[] = [];
   let activeTools = ["read", "edit"];
@@ -47,7 +48,7 @@ async function triggerHarness(options: { failCode?: boolean } = {}) {
 
   const pi = {
     on: (name: string, handler: Function) => handlers.set(name, handler),
-    registerCommand: () => undefined,
+    registerCommand: (name: string, command: unknown) => commands.set(name, command),
     registerShortcut: () => undefined,
     registerTool: () => undefined,
     getCommands: () => [
@@ -90,6 +91,7 @@ async function triggerHarness(options: { failCode?: boolean } = {}) {
     entries,
     reports,
     ctx,
+    commands,
     get activeTools() {
       return activeTools;
     },
@@ -155,19 +157,25 @@ test("command and tool share switching, persistence, status, and schema", async 
 
   createModeSwitchExtension({ getAgentDirectory: () => agentDir })(pi);
   await handlers.get("session_start")!({ reason: "startup" }, ctx);
-  assert.deepEqual(activeTools, ["read", "mode_switch"]);
-  assert.equal(statuses.at(-1), "mode:plan");
+  assert.deepEqual(activeTools, ["read", "edit"]);
+  assert.equal(statuses.at(-1), undefined);
   assert.equal(entries.length, 0);
+
+  branch = [{ type: "custom", customType: "mode-switch-state", data: { mode: "code" } }];
+  await handlers.get("session_tree")!({}, ctx);
+  assert.deepEqual(activeTools, ["read", "edit"]);
+  assert.equal(entries.length, 0);
+  branch = [];
 
   const cycleShortcut = shortcuts.get("ctrl+alt+m");
   assert.ok(cycleShortcut);
   await cycleShortcut.handler(ctx);
-  assert.deepEqual(activeTools, ["read", "edit", "mode_switch"]);
-  assert.deepEqual(entries.at(-1), { customType: "mode-switch-state", data: { mode: "code" } });
-
-  await cycleShortcut.handler(ctx);
   assert.deepEqual(activeTools, ["read", "mode_switch"]);
   assert.deepEqual(entries.at(-1), { customType: "mode-switch-state", data: { mode: "plan" } });
+
+  await cycleShortcut.handler(ctx);
+  assert.deepEqual(activeTools, ["read", "edit", "mode_switch"]);
+  assert.deepEqual(entries.at(-1), { customType: "mode-switch-state", data: { mode: "code" } });
 
   await commands.get("mode").handler("code", ctx);
   assert.deepEqual(activeTools, ["read", "edit", "mode_switch"]);
@@ -196,12 +204,13 @@ test("mode cycle shortcut does not consume Enter", () => {
   assert.equal(matchesKey("\x1b\r", Key.ctrlAlt("m")), true);
 });
 
-test("bare /mode opens settings instead of cycling or persisting a switch", async () => {
+test("bare /mode activates the default and /mode-settings opens settings", async () => {
   const { root, agentDir } = await fixture();
   const handlers = new Map<string, Function>();
   const customPages: string[] = [];
   const commands = new Map<string, any>();
   const entries: Array<{ customType: string; data: unknown }> = [];
+  let activeTools = ["read"];
 
   const pi = {
     on: (name: string, handler: Function) => handlers.set(name, handler),
@@ -210,8 +219,10 @@ test("bare /mode opens settings instead of cycling or persisting a switch", asyn
     registerTool: () => undefined,
     getCommands: () => [],
     getAllTools: () => ["read", "mode_switch"].map((name) => ({ name })),
-    getActiveTools: () => ["read", "mode_switch"],
-    setActiveTools: () => undefined,
+    getActiveTools: () => activeTools,
+    setActiveTools: (names: string[]) => {
+      activeTools = names;
+    },
     setModel: async () => true,
     setThinkingLevel: () => undefined,
     getThinkingLevel: () => "off",
@@ -248,20 +259,24 @@ test("bare /mode opens settings instead of cycling or persisting a switch", asyn
   createModeSwitchExtension({ getAgentDirectory: () => agentDir })(pi);
   await handlers.get("session_start")!({ reason: "startup" }, ctx);
   await commands.get("mode").handler("   ", ctx);
+  assert.deepEqual(activeTools, ["read", "mode_switch"]);
+  assert.deepEqual(entries.at(-1), { customType: "mode-switch-state", data: { mode: "plan" } });
 
+  await commands.get("mode-settings").handler("", ctx);
   assert.ok(customPages.some((page) => page.includes("Configure mode: plan")));
-  assert.equal(entries.length, 0);
+  assert.equal(entries.length, 1);
 });
 
 test("context uses the mode selected by the immediately preceding tool call", async () => {
   const { root, agentDir } = await fixture();
   const handlers = new Map<string, Function>();
+  const commands = new Map<string, any>();
   const tools = new Map<string, any>();
   let activeTools: string[] = [];
   let thinking = "off";
   const pi = {
     on: (name: string, handler: Function) => handlers.set(name, handler),
-    registerCommand: () => undefined,
+    registerCommand: (name: string, command: unknown) => commands.set(name, command),
     registerShortcut: () => undefined,
     registerTool: (tool: any) => tools.set(tool.name, tool),
     getAllTools: () => ["read", "edit", ...tools.keys()].map((name) => ({ name })),
@@ -288,6 +303,7 @@ test("context uses the mode selected by the immediately preceding tool call", as
 
   createModeSwitchExtension({ getAgentDirectory: () => agentDir, report: () => undefined })(pi);
   await handlers.get("session_start")!({ reason: "startup" }, ctx);
+  await commands.get("mode").handler("", ctx);
   await handlers.get("before_agent_start")!({ systemPromptOptions: { skills: [] } }, ctx);
   const first = await handlers.get("context")!({ messages: [] }, ctx);
   assert.match(first.messages.at(-1).content, /\[ACTIVE MODE: plan\]/);
@@ -300,6 +316,8 @@ test("context uses the mode selected by the immediately preceding tool call", as
 
 test("explicit skill commands activate and persist their target mode", async () => {
   const harness = await triggerHarness();
+  await harness.commands.get("mode").handler("", harness.ctx);
+  harness.entries.length = 0;
   const event = { text: "/skill:brainstorming focus on behavior", source: "interactive" };
 
   const result = await harness.handlers.get("input")!(event, harness.ctx);
@@ -314,6 +332,8 @@ test("explicit skill commands activate and persist their target mode", async () 
 
 test("explicit skill triggers ignore unavailable and unmapped skills and skip an already-active mode", async () => {
   const harness = await triggerHarness();
+  await harness.commands.get("mode").handler("", harness.ctx);
+  harness.entries.length = 0;
 
   const unavailable = await harness.handlers.get("input")!(
     { text: "/skill:missing-trigger", source: "interactive" },
@@ -336,6 +356,8 @@ test("explicit skill triggers ignore unavailable and unmapped skills and skip an
 
 test("explicit skill trigger failure consumes the command", async () => {
   const harness = await triggerHarness({ failCode: true });
+  await harness.commands.get("mode").handler("", harness.ctx);
+  harness.entries.length = 0;
 
   const result = await harness.handlers.get("input")!(
     { text: "/skill:brainstorming", source: "interactive" },
@@ -350,6 +372,8 @@ test("explicit skill trigger failure consumes the command", async () => {
 
 test("reading a discovered skill activates its mode before the next context", async () => {
   const harness = await triggerHarness();
+  await harness.commands.get("mode").handler("", harness.ctx);
+  harness.entries.length = 0;
   const skillPath = join(harness.root, "skills", "brainstorming", "SKILL.md");
   await harness.handlers.get("before_agent_start")!(
     { systemPromptOptions: { skills: [discoveredSkill("brainstorming", skillPath)] } },
@@ -368,6 +392,28 @@ test("reading a discovered skill activates its mode before the next context", as
     { customType: "mode-switch-state", data: { mode: "code" } },
   ]);
   assert.match(context.messages.at(-1).content, /\[ACTIVE MODE: code\]/);
+});
+
+test("skill triggers wait for mode activation", async () => {
+  const harness = await triggerHarness();
+
+  const result = await harness.handlers.get("input")!(
+    { text: "/skill:brainstorming focus on behavior", source: "interactive" },
+    harness.ctx,
+  );
+
+  assert.deepEqual(result, { action: "continue" });
+  assert.deepEqual(harness.activeTools, ["read", "edit"]);
+  assert.deepEqual(harness.entries, []);
+
+  await harness.commands.get("mode").handler("", harness.ctx);
+  harness.entries.length = 0;
+  await harness.handlers.get("input")!(
+    { text: "/skill:brainstorming focus on behavior", source: "interactive" },
+    harness.ctx,
+  );
+  assert.deepEqual(harness.activeTools, ["read", "edit", "mode_switch"]);
+  assert.deepEqual(harness.entries, [{ customType: "mode-switch-state", data: { mode: "code" } }]);
 });
 
 test("ordinary and skill reference reads do not trigger modes", async () => {
@@ -398,6 +444,8 @@ test("ordinary and skill reference reads do not trigger modes", async () => {
 
 test("a failed skill-read trigger blocks the read", async () => {
   const harness = await triggerHarness({ failCode: true });
+  await harness.commands.get("mode").handler("", harness.ctx);
+  harness.entries.length = 0;
   const skillPath = join(harness.root, "skills", "brainstorming", "SKILL.md");
   await harness.handlers.get("before_agent_start")!(
     { systemPromptOptions: { skills: [discoveredSkill("brainstorming", skillPath)] } },
@@ -481,9 +529,9 @@ modes:
   await handlers.get("session_start")!({ reason: "startup" }, ctx);
 
   assert.equal(await readFile(join(agentDir, "modes.yaml"), "utf8"), bundled);
-  assert.deepEqual(selectedModel, { provider: "provider", id: "plan-model" });
+  assert.equal(selectedModel, undefined);
   assert.equal(thinking, "off");
-  assert.deepEqual(activeTools, ["read", "mode_switch"]);
+  assert.deepEqual(activeTools, ["read"]);
 });
 
 test("mode_switch remains registered without config and reports expected paths", async () => {
@@ -517,7 +565,7 @@ test("mode_switch remains registered without config and reports expected paths",
     report: () => undefined,
   })(pi);
   await handlers.get("session_start")!({ reason: "startup" }, ctx);
-  assert.ok(activeTools.includes("mode_switch"));
+  assert.equal(activeTools.includes("mode_switch"), false);
   await assert.rejects(
     () => tools.get("mode_switch").execute("call-3", { mode: "code" }, undefined, undefined, ctx),
     (error: unknown) =>

@@ -300,10 +300,12 @@ class TextValueSubmenu extends Container {
   }
 }
 
-class MultiSelectSubmenu implements Component {
+export class MultiSelectSubmenu implements Component {
   private selected: Set<string>;
   private index = 0;
   private readonly options: string[];
+  private readonly selectableOptions: string[];
+  private readonly allOption?: string;
   private readonly title: string;
   private readonly description: string;
   private readonly theme: ThemeLike;
@@ -320,15 +322,24 @@ class MultiSelectSubmenu implements Component {
     current: string[],
     done: (value?: string) => void,
     onChange: (values: string[]) => void,
+    allOption?: string,
   ) {
     this.tui = tui;
     this.theme = theme;
     this.title = title;
     this.description = description;
-    this.options = [...new Set([...current, ...options])].sort();
-    this.selected = new Set(current);
+    this.allOption = allOption;
+    this.selectableOptions = [...new Set([...current, ...options])]
+      .filter((option) => option !== allOption)
+      .sort();
+    this.options = allOption ? [allOption, ...this.selectableOptions] : this.selectableOptions;
+    this.selected = new Set(current.filter((option) => option !== allOption));
     this.done = done;
     this.onChange = onChange;
+  }
+
+  private allSelected(): boolean {
+    return this.allOption !== undefined && this.selectableOptions.every((option) => this.selected.has(option));
   }
 
   render(width: number): string[] {
@@ -340,7 +351,8 @@ class MultiSelectSubmenu implements Component {
     for (let i = 0; i < this.options.length; i++) {
       const option = this.options[i] ?? "";
       const prefix = i === this.index ? this.theme.fg("accent", "> ") : "  ";
-      const checked = this.selected.has(option) ? this.theme.fg("success", "[x] ") : "[ ] ";
+      const isChecked = option === this.allOption ? this.allSelected() : this.selected.has(option);
+      const checked = isChecked ? this.theme.fg("success", "[x] ") : "[ ] ";
       lines.push(truncateToWidth(`${prefix}${checked}${option}`, width));
     }
     lines.push("", this.theme.fg("dim", "↑↓ move · Space toggle · Enter save · Esc back"));
@@ -354,7 +366,13 @@ class MultiSelectSubmenu implements Component {
       this.index = this.options.length === 0 ? 0 : (this.index + 1) % this.options.length;
     } else if (matchesKey(data, Key.space)) {
       const option = this.options[this.index];
-      if (option) {
+      if (option === this.allOption) {
+        const selectAll = !this.allSelected();
+        for (const selectable of this.selectableOptions) {
+          if (selectAll) this.selected.add(selectable);
+          else this.selected.delete(selectable);
+        }
+      } else if (option) {
         if (this.selected.has(option)) this.selected.delete(option);
         else this.selected.add(option);
       }
@@ -468,6 +486,7 @@ function modeSettings(
             (values) => {
               working.skills = values;
             },
+            "All",
           ),
       },
       {
